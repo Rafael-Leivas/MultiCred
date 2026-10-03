@@ -18,6 +18,7 @@ final class ArchitectureGuardTests: XCTestCase {
     private static let allowed: [String: Set<String>] = [
         "Environment/RealEnvironment.swift": ["NSHomeDirectory", "getpwuid", "NSUserName"],
         "Commands/ProcessRunner.swift": ["Process()"],
+        "Adapters/Launchctl.swift": ["/bin/launchctl"],
     ]
 
     func testCoreDoesNotReachTheRealSystemOutsideAllowedFiles() throws {
