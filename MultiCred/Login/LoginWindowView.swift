@@ -1,13 +1,12 @@
 import MultiCredCore
-
 import SwiftUI
 
-/// "Entrar no Claude" window, design 05b (terminal variation, output collapsible).
-struct LoginWindowView: View {
+/// "Entrar no Claude" page (design 05b, terminal variation, output collapsible),
+/// shown inside the Accounts window. Back, Cancel and Done return to the list.
+struct LoginPage: View {
     @Bindable var session: LoginSession
     let model: AppModel
-    let onRetry: () -> Void
-    let onClose: () -> Void
+    let navigator: AccountsNavigator
 
     @State private var code = ""
     @State private var showOutput = false
@@ -17,40 +16,42 @@ struct LoginWindowView: View {
     private var isOutputVisible: Bool { showOutput || session.phase.isFailure }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if model.isTestMode { TestModeBanner() }
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                Text(message)
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            if model.isTestMode {
+                Label("Simulação do modo de teste: o navegador não abre. Digite qualquer código para conectar, ou \"erro\" para ver a tela de erro.", systemImage: "testtube.2")
                     .font(.callout)
-                    .foregroundStyle(session.phase.isFailure ? .red : .secondary)
+                    .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-
-                if isOutputVisible {
-                    TerminalOutput(
-                        directory: model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment)),
-                        command: model.isTestMode ? "claude auth login (simulado)" : "claude auth login",
-                        text: session.output
-                    )
-                }
-
-                if session.phase == .connected {
-                    Label("Credenciais guardadas pelo Claude Code. O MultiCred não as armazena.", systemImage: "lock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if !session.phase.isFinished || session.phase.isFailure {
-                    codeRow
-                }
-                if let activationError {
-                    Text(activationError).font(.caption).foregroundStyle(.red)
-                }
-                Spacer(minLength: 0)
-                footer
             }
-            .padding(20)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(session.phase.isFailure ? .red : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if isOutputVisible {
+                TerminalOutput(
+                    directory: model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment)),
+                    command: model.isTestMode ? "claude auth login (simulado)" : "claude auth login",
+                    text: session.output
+                )
+            }
+
+            if session.phase == .connected {
+                Label("Credenciais guardadas pelo Claude Code. O MultiCred não as armazena.", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                codeRow
+            }
+            if let activationError {
+                Text(activationError).font(.caption).foregroundStyle(.red)
+            }
+            Spacer(minLength: 0)
+            footer
         }
-        .frame(width: 560)
-        .frame(minHeight: 300)
+        .padding(20)
+        .navigationTitle("Entrar no Claude")
     }
 
     private var header: some View {
@@ -76,7 +77,7 @@ struct LoginWindowView: View {
                 .onSubmit(sendCode)
                 .disabled(session.phase.isFinished)
             if session.phase.isFailure {
-                Button("Tentar de novo", action: onRetry)
+                Button("Tentar de novo") { navigator.showLogin(account, replacingTop: true) }
             } else {
                 Button("Conectar", action: sendCode)
                     .keyboardShortcut(.defaultAction)
@@ -108,25 +109,30 @@ struct LoginWindowView: View {
                 Button("Ativar \(account.nickname)") {
                     Task {
                         activationError = await model.switchClaudeOnly(to: account.id)
-                        if activationError == nil { onClose() }
+                        if activationError == nil { navigator.reset() }
                     }
                 }
-                Button("Concluir", action: onClose).keyboardShortcut(.defaultAction)
+                Button("Concluir") { navigator.reset() }.keyboardShortcut(.defaultAction)
             case .failed:
-                Button("Cancelar", action: onClose)
-                if session.authorizationURL != nil {
+                Button("Voltar") { navigator.back() }
+                if canOpenBrowser {
                     Button("Abrir navegador de novo") { session.openBrowserAgain() }.keyboardShortcut(.defaultAction)
                 }
             default:
-                Button("Abrir navegador de novo") { session.openBrowserAgain() }
-                    .disabled(session.authorizationURL == nil)
+                if canOpenBrowser {
+                    Button("Abrir navegador de novo") { session.openBrowserAgain() }
+                        .disabled(session.authorizationURL == nil)
+                }
                 Button("Cancelar") {
                     session.cancel()
-                    onClose()
+                    navigator.back()
                 }
             }
         }
     }
+
+    /// The simulator's URL is fake; only the real CLI gives one worth opening.
+    private var canOpenBrowser: Bool { !model.isTestMode }
 
     private var message: String {
         switch session.phase {

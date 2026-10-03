@@ -1,23 +1,52 @@
 import MultiCredCore
 import SwiftUI
 
-/// Claude accounts list (the "Claude" section of design 03). Phase 4 places it
-/// inside the full Accounts window with the sidebar.
+/// Accounts window: the Claude accounts list (design 03) with "add" and
+/// "login" as pages pushed in the same window.
 struct ClaudeAccountsView: View {
     let model: AppModel
-    let openLogin: (ClaudeAccount) -> Void
-
-    @State private var showingAdd = false
-    @State private var pendingRemoval: ClaudeAccount?
+    @Bindable var navigator: AccountsNavigator
 
     var body: some View {
         VStack(spacing: 0) {
             if model.isTestMode { TestModeBanner() }
+            NavigationStack(path: $navigator.path) {
+                ClaudeAccountsListPage(model: model, navigator: navigator)
+                    .navigationDestination(for: AccountsRoute.self) { route in
+                        switch route {
+                        case .addClaude:
+                            AddClaudeAccountPage(model: model, navigator: navigator)
+                        case let .claudeLogin(id):
+                            if let session = navigator.sessions[id] {
+                                LoginPage(session: session, model: model, navigator: navigator)
+                            } else {
+                                ContentUnavailableView("Login encerrado", systemImage: "xmark.circle")
+                            }
+                        }
+                    }
+            }
+        }
+        .frame(minWidth: 760, minHeight: 520)
+        .alert("Não deu certo", isPresented: Binding(get: { model.lastError != nil }, set: { if !$0 { model.lastError = nil } })) {
+            Button("Ok") { model.lastError = nil }
+        } message: {
+            Text(model.lastError ?? "")
+        }
+    }
+}
+
+struct ClaudeAccountsListPage: View {
+    let model: AppModel
+    let navigator: AccountsNavigator
+    @State private var pendingRemoval: ClaudeAccount?
+
+    var body: some View {
+        VStack(spacing: 0) {
             HStack {
                 Text("Contas Claude").font(.title2.weight(.semibold))
                 Spacer()
                 Button {
-                    showingAdd = true
+                    navigator.showAddClaude()
                 } label: {
                     Label("Adicionar conta", systemImage: "plus")
                 }
@@ -38,7 +67,7 @@ struct ClaudeAccountsView: View {
                     ForEach(model.config.claudeAccounts) { account in
                         row(account)
                             .contextMenu {
-                                Button("Entrar…") { openLogin(account) }
+                                Button("Entrar…") { navigator.showLogin(account) }
                                 Divider()
                                 Button("Remover conta…", role: .destructive) { pendingRemoval = account }
                             }
@@ -46,17 +75,10 @@ struct ClaudeAccountsView: View {
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: false))
             }
-
             note.padding(20)
         }
-        .frame(minWidth: 720, minHeight: 420)
+        .navigationTitle("Contas Claude")
         .task { await model.refreshClaudeStatuses() }
-        .sheet(isPresented: $showingAdd) {
-            AddClaudeAccountSheet(model: model) { account in
-                showingAdd = false
-                if let account { openLogin(account) }
-            }
-        }
         .confirmationDialog(
             "Remover a conta \(pendingRemoval?.nickname ?? "")?",
             isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
@@ -67,11 +89,6 @@ struct ClaudeAccountsView: View {
             let used = model.profilesUsing(account.id).map(\.name)
             Text((used.isEmpty ? "" : "Usada em: \(used.joined(separator: ", ")). Esses perfis deixam de trocar o Claude. ")
                 + "A pasta e o login continuam no seu Mac.")
-        }
-        .alert("Não deu certo", isPresented: Binding(get: { model.lastError != nil }, set: { if !$0 { model.lastError = nil } })) {
-            Button("Ok") { model.lastError = nil }
-        } message: {
-            Text(model.lastError ?? "")
         }
     }
 
@@ -84,7 +101,7 @@ struct ClaudeAccountsView: View {
             }
             .frame(width: 230, alignment: .leading)
             Text(usedIn(account)).frame(width: 130, alignment: .leading).foregroundStyle(.secondary)
-            Text(folder(account))
+            Text(account.configDir.map(model.environment.abbreviate) ?? "~/.claude (padrão)")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -94,7 +111,7 @@ struct ClaudeAccountsView: View {
                 if let status = model.claudeStatus(account) {
                     StatusPill(text: status.pill.0, tone: status.pill.1)
                     if !status.isLoggedIn {
-                        Button("Entrar…") { openLogin(account) }.controlSize(.small)
+                        Button("Entrar…") { navigator.showLogin(account) }.controlSize(.small)
                     }
                 } else {
                     ProgressView().controlSize(.small)
@@ -107,10 +124,6 @@ struct ClaudeAccountsView: View {
     private func usedIn(_ account: ClaudeAccount) -> String {
         let names = model.profilesUsing(account.id).map(\.name)
         return names.isEmpty ? "—" : names.joined(separator: ", ")
-    }
-
-    private func folder(_ account: ClaudeAccount) -> String {
-        account.configDir.map(model.environment.abbreviate) ?? "~/.claude (padrão)"
     }
 
     private var note: some View {
@@ -127,10 +140,11 @@ struct ClaudeAccountsView: View {
     }
 }
 
-/// Sheet for a new account: nickname, color and which folder it uses.
-struct AddClaudeAccountSheet: View {
+/// "Adicionar conta Claude" page: nickname, color and which folder it uses.
+/// On success the page is replaced by the login page for the new account.
+struct AddClaudeAccountPage: View {
     let model: AppModel
-    let onDone: (ClaudeAccount?) -> Void
+    let navigator: AccountsNavigator
 
     private enum FolderMode: String, CaseIterable, Identifiable {
         case new, existing, standard
@@ -144,7 +158,7 @@ struct AddClaudeAccountSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Adicionar conta Claude").font(.title3.weight(.semibold))
+            Text("Adicionar conta Claude").font(.title2.weight(.semibold))
             Form {
                 TextField("Apelido", text: $nickname, prompt: Text("Cliente X"))
                 Picker("Cor", selection: $color) {
@@ -165,19 +179,21 @@ struct AddClaudeAccountSheet: View {
                     }
                 }
             }
-            Text("Depois de adicionar, a janela de login abre para você entrar nessa conta.")
+            .formStyle(.grouped)
+            Text("Depois de adicionar, o login dessa conta abre aqui mesmo.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Spacer()
             HStack {
                 Spacer()
-                Button("Cancelar") { onDone(nil) }.keyboardShortcut(.cancelAction)
-                Button("Adicionar", action: add)
+                Button("Voltar") { navigator.back() }.keyboardShortcut(.cancelAction)
+                Button("Adicionar e entrar", action: add)
                     .keyboardShortcut(.defaultAction)
                     .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty || (mode == .existing && existingPath.isEmpty))
             }
         }
         .padding(20)
-        .frame(width: 480)
+        .navigationTitle("Adicionar conta Claude")
     }
 
     private var hasDefaultAccount: Bool { model.config.claudeAccounts.contains { $0.isDefault } }
@@ -202,6 +218,6 @@ struct AddClaudeAccountSheet: View {
         case .standard: .defaultFolder
         }
         guard let account = model.addClaudeAccount(nickname: nickname, color: color, folder: folder) else { return }
-        onDone(account)
+        navigator.showLogin(account, replacingTop: true)
     }
 }

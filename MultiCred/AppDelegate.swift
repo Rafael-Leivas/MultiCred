@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.addItem(disabled("Nenhuma conta cadastrada"))
         }
         submenu.addItem(.separator())
-        submenu.addItem(action("Adicionar conta Claude…", #selector(openClaudeAccounts), symbol: "plus"))
+        submenu.addItem(action("Adicionar conta Claude…", #selector(addClaudeAccount), symbol: "plus"))
         submenu.addItem(.separator())
         submenu.addItem(disabled("Vale para novas sessões do Claude Code."))
         submenu.addItem(disabled("Sessões já abertas continuam na conta anterior."))
@@ -105,6 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openClaudeAccounts() {
         windows.showClaudeAccounts()
+    }
+
+    @objc private func addClaudeAccount() {
+        windows.showAddClaudeAccount()
     }
 
     @objc private func loginFromMenu(_ sender: NSMenuItem) {

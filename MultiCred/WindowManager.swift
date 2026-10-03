@@ -4,60 +4,40 @@ import SwiftUI
 
 /// Opens and reuses the app's windows. A menu bar app has no main window, so
 /// each window is an NSWindow hosting a SwiftUI view, kept alive here.
+/// Sub-steps (add account, login) are pages inside a window, never new windows.
 @MainActor
 final class WindowManager: NSObject, NSWindowDelegate {
     private let model: AppModel
+    private let accountsNavigator: AccountsNavigator
     private var windows: [String: NSWindow] = [:]
-    private var loginSessions: [UUID: LoginSession] = [:]
 
     init(model: AppModel) {
         self.model = model
+        accountsNavigator = AccountsNavigator(model: model)
     }
 
+    /// Accounts window on the list.
     func showClaudeAccounts() {
-        show(id: "claude-accounts", title: "Contas Claude") {
-            ClaudeAccountsView(model: self.model) { [weak self] account in self?.showLogin(for: account) }
-        }
+        showAccountsWindow()
     }
 
-    /// One login window per account; reopening brings the existing one forward.
+    /// Accounts window on the "add account" page.
+    func showAddClaudeAccount() {
+        showAccountsWindow()
+        accountsNavigator.showAddClaude()
+    }
+
+    /// Accounts window on the login page for `account`.
     func showLogin(for account: ClaudeAccount) {
-        let id = "login-\(account.id)"
-        if let window = windows[id] {
-            bringToFront(window)
-            return
-        }
-        startLogin(for: account, windowID: id)
+        showAccountsWindow()
+        accountsNavigator.path = []
+        accountsNavigator.showLogin(account)
     }
 
-    private func startLogin(for account: ClaudeAccount, windowID: String) {
-        let session = LoginSession(account: account) { [weak self] phase in
-            guard let self, phase == .connected else { return }
-            Task { await self.model.refreshClaudeStatus(account.id) }
+    private func showAccountsWindow() {
+        show(id: "accounts", title: "Contas") {
+            ClaudeAccountsView(model: self.model, navigator: self.accountsNavigator)
         }
-        loginSessions[account.id] = session
-        show(id: windowID, title: "Entrar no Claude") {
-            LoginWindowView(
-                session: session,
-                model: self.model,
-                onRetry: { [weak self] in self?.restartLogin(for: account, windowID: windowID) },
-                onClose: { [weak self] in self?.close(windowID) }
-            )
-        }
-        Task {
-            switch await LoginCommand.make(for: account, model: model) {
-            case let .success(command):
-                model.log.log(.info, "login started for \(account.nickname) (\(model.environment.mode.rawValue))")
-                session.start(command)
-            case let .failure(error):
-                session.failToLaunch(error.message)
-            }
-        }
-    }
-
-    private func restartLogin(for account: ClaudeAccount, windowID: String) {
-        close(windowID)
-        startLogin(for: account, windowID: windowID)
     }
 
     private func show<Content: View>(id: String, title: String, @ViewBuilder content: () -> Content) {
@@ -76,10 +56,6 @@ final class WindowManager: NSObject, NSWindowDelegate {
         bringToFront(window)
     }
 
-    private func close(_ id: String) {
-        windows[id]?.close()
-    }
-
     private func bringToFront(_ window: NSWindow) {
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
@@ -88,8 +64,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, let id = window.identifier?.rawValue else { return }
         windows[id] = nil
-        if id.hasPrefix("login-"), let uuid = UUID(uuidString: String(id.dropFirst("login-".count))) {
-            loginSessions.removeValue(forKey: uuid)?.stop()
+        if id == "accounts" {
+            // Closing the window ends any login in progress.
+            accountsNavigator.reset()
         }
     }
 }
