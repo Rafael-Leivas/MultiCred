@@ -6,7 +6,7 @@ import SwiftUI
 struct LoginPage: View {
     @Bindable var session: LoginSession
     let model: AppModel
-    let navigator: AccountsNavigator
+    let navigator: MainNavigator
 
     @State private var code = ""
     @State private var showOutput = false
@@ -77,7 +77,7 @@ struct LoginPage: View {
                 .onSubmit(sendCode)
                 .disabled(session.phase.isFinished)
             if session.phase.isFailure {
-                Button("Tentar de novo") { navigator.showLogin(account, replacingTop: true) }
+                Button("Tentar de novo") { navigator.showClaudeLogin(account, replacingTop: true) }
             } else {
                 Button("Conectar", action: sendCode)
                     .keyboardShortcut(.defaultAction)
@@ -109,10 +109,10 @@ struct LoginPage: View {
                 Button("Ativar \(account.nickname)") {
                     Task {
                         activationError = await model.switchClaudeOnly(to: account.id)
-                        if activationError == nil { navigator.reset() }
+                        if activationError == nil { navigator.path = [] }
                     }
                 }
-                Button("Concluir") { navigator.reset() }.keyboardShortcut(.defaultAction)
+                Button("Concluir") { navigator.path = [] }.keyboardShortcut(.defaultAction)
             case .failed:
                 Button("Voltar") { navigator.back() }
                 if canOpenBrowser {

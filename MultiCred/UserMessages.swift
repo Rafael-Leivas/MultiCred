@@ -12,7 +12,57 @@ enum UserMessages {
         case let error as ClaudeAccountError: describe(error)
         case let error as JSONStoreError: describe(error)
         case let error as CommandError: error.description
+        case let error as PreflightFailure: describe(error)
+        case let error as EditorError: describe(error)
+        case let error as InstallError: describe(error)
+        case let error as FileWriteError: error.description
+        case let error as KeychainError: "Keychain: \(error.description)"
+        case is GitHubCLIError: "O GitHub CLI respondeu algo inesperado."
         default: String(describing: error)
+        }
+    }
+
+    static func describe(_ error: EditorError) -> String {
+        switch error {
+        case let .invalid(issues): describe(issues)
+        case .emptySecret: "Cole o valor da chave."
+        case let .keychain(reason): "Não consegui gravar no Keychain: \(reason)"
+        }
+    }
+
+    static func describe(_ error: InstallError) -> String {
+        switch error {
+        case let .markerMismatch(path): "O bloco do MultiCred em \(path) foi editado à mão e está incompleto. Remova as linhas a partir de \"# >>> MultiCred >>>\" e tente de novo."
+        case let .writeFailed(path, reason): "Não consegui alterar \(path): \(reason). Nada foi mudado."
+        }
+    }
+
+    static func describe(_ issues: [ValidationIssue]) -> String {
+        guard let issue = issues.first else { return "Dados inválidos." }
+        let text = switch issue {
+        case let .emptyField(_, field): "O campo \(fieldName(field)) está vazio."
+        case let .controlCharacters(_, field): "O campo \(fieldName(field)) tem quebra de linha ou caractere de controle."
+        case .invalidEmail: "E-mail inválido."
+        case .invalidGitHubUsername: "Usuário do GitHub inválido (só letras, números e hífen)."
+        case .invalidHost: "Servidor do GitHub inválido."
+        case let .invalidEnvVar(_, name): "\"\(name)\" não é um nome de variável válido (use LETRAS_MAIUSCULAS e _)."
+        case let .reservedEnvVar(_, name): "\(name) é reservada e não pode ser usada para uma chave."
+        case let .duplicateEnvVarInProfile(_, name): "O perfil tem duas chaves para \(name)."
+        case .invalidClaudeDirectory: "Pasta da conta Claude inválida."
+        case .duplicateClaudeDirectory: "Duas contas Claude usam a mesma pasta."
+        case .invalidSSHKeyPath: "Caminho da chave SSH inválido (use caminho absoluto ou começando com ~/)."
+        case .missingReference: "O perfil aponta para uma conta que não existe mais."
+        case .duplicateID: "Configuração com identificadores repetidos."
+        }
+        return issues.count > 1 ? "\(text) (+\(issues.count - 1) problema(s))" : text
+    }
+
+    private static func fieldName(_ field: String) -> String {
+        switch field {
+        case "nickname": "apelido"
+        case "name": "nome"
+        case "email": "e-mail"
+        default: field
         }
     }
 
@@ -55,7 +105,7 @@ enum UserMessages {
         case let .notADirectory(path): "Não é uma pasta: \(path)"
         case let .outsideSandbox(path): "No modo de teste, a pasta precisa ficar dentro do HOME de teste (\(path) está fora)."
         case let .createFailed(reason): "Não consegui criar a pasta: \(reason)"
-        case .invalid: "Os dados da conta são inválidos (apelido vazio ou caracteres não permitidos)."
+        case let .invalid(issues): describe(issues)
         }
     }
 

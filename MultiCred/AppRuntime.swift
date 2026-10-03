@@ -1,12 +1,6 @@
 import Foundation
 import MultiCredCore
 
-/// Chooses which system the app talks to.
-///
-/// Debug builds start in test mode: a sandbox home in the temporary directory,
-/// commands recorded instead of executed, and an in-memory keychain. The real
-/// system is used only when launched with `-MultiCredRealSystem YES`.
-/// Release builds always use the real system.
 /// How "Entrar no Claude" runs.
 enum ClaudeLoginMode: Equatable {
     /// Test mode default: a shell script that imitates the CLI. Touches nothing.
@@ -21,9 +15,45 @@ enum ClaudeLoginMode: Equatable {
     case real
 }
 
+/// Chooses which system the app talks to.
+///
+/// Debug builds start in test mode: a sandbox home in the temporary directory,
+/// a simulated world for gh/launchctl (see `SandboxCommandRunner`) and an
+/// in-memory keychain. The real system is used only when launched with
+/// `-MultiCredRealSystem YES` (scheme "MultiCred (sistema real)").
+/// Release builds always use the real system.
 enum AppRuntime {
     static let realSystemArgument = "MultiCredRealSystem"
     static let realClaudeLoginArgument = "MultiCredRealClaudeLogin"
+
+    struct Runtime {
+        let environment: SystemEnvironment
+        let sandboxRunner: SandboxCommandRunner?
+    }
+
+    static func make() -> Runtime {
+        #if DEBUG
+        if launchArgumentIsYes(realSystemArgument) {
+            return Runtime(environment: RealEnvironment.make(), sandboxRunner: nil)
+        }
+        let sandbox = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("multicred-sandbox", isDirectory: true)
+        try? FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        let runner = SandboxCommandRunner(sandboxHome: sandbox.resolvingSymlinksInPath())
+        let base = RealEnvironment.makeDryRun(sandboxHome: sandbox.resolvingSymlinksInPath())
+        let environment = SystemEnvironment(
+            mode: .dryRun,
+            home: base.home,
+            loginShell: base.loginShell,
+            userName: base.userName,
+            runner: runner,
+            keychain: base.keychain
+        )
+        return Runtime(environment: environment, sandboxRunner: runner)
+        #else
+        return Runtime(environment: RealEnvironment.make(), sandboxRunner: nil)
+        #endif
+    }
 
     static func claudeLoginMode(for environment: SystemEnvironment) -> ClaudeLoginMode {
         if environment.mode == .real { return .real }
@@ -33,26 +63,11 @@ enum AppRuntime {
         return .simulated
     }
 
-    /// Where the real Claude Code may be installed, using the real home: in test
-    /// mode `~` points at the sandbox, where Claude Code is not installed.
-    static var realClaudeSearchDirectories: [String] {
+    /// Where tools may be installed, using the real home: in test mode `~`
+    /// points at the sandbox, where nothing is installed.
+    static var realToolDirectories: [String] {
         let realHome = RealEnvironment.realHomeDirectory.path
-        return ["\(realHome)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-    }
-
-    static func makeEnvironment() -> SystemEnvironment {
-        #if DEBUG
-        // Launch arguments only, never persisted defaults: a forgotten
-        // `defaults write` must not silently switch a debug build to the real system.
-        if launchArgumentIsYes(realSystemArgument) {
-            return RealEnvironment.make()
-        }
-        let sandbox = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("multicred-sandbox", isDirectory: true)
-        return RealEnvironment.makeDryRun(sandboxHome: sandbox)
-        #else
-        return RealEnvironment.make()
-        #endif
+        return ["/opt/homebrew/bin", "/usr/local/bin", "\(realHome)/.local/bin", "/usr/bin", "/bin"]
     }
 
     private static func launchArgumentIsYes(_ name: String) -> Bool {

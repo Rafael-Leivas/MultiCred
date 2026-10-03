@@ -1,15 +1,15 @@
 import AppKit
 import MultiCredCore
+import SwiftUI
 
-/// Status item and menu. Phase 3 adds Claude accounts and the
-/// "switch only the Claude account" submenu; the full design 01a menu
-/// (header, profiles, status) arrives in Phase 4.
+/// Status item and the menu (design 01a): header, profiles ⌘1…⌘9,
+/// "Trocar só a conta Claude", Verificar ⌘R, Contas, Ajustes ⌘, and Sair ⌘Q.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
-    private let model = AppModel(environment: AppRuntime.makeEnvironment())
+    private let model = AppModel(runtime: AppRuntime.make())
     private lazy var windows = WindowManager(model: model)
-    private var toolPaths: [Tool: String] = [:]
+    private let feedback = SwitchFeedbackPresenter()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -20,31 +20,97 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = item
         updateIcon()
 
+        model.onSwitched = { [weak self] outcome in
+            guard let self else { return }
+            self.updateIcon()
+            self.feedback.present(outcome, feedback: self.model.config.settings.switchFeedback)
+        }
         model.log.log(.info, "launched in \(model.environment.mode.rawValue) mode")
+
         Task {
             await model.load()
             updateIcon()
-            for tool in Tool.allCases {
-                toolPaths[tool] = await model.tools.locate(tool)?.path ?? "não encontrado"
+            if model.isInstalled {
+                await model.reapplyActiveProfile()
+                await model.refreshClaudeStatuses()
+            } else {
+                windows.show()
             }
-            await model.refreshClaudeStatuses()
+            updateIcon()
+        }
+        startObservingIcon()
+    }
+
+    /// Re-renders the icon whenever the active profile or consistency changes.
+    private func startObservingIcon() {
+        withObservationTracking {
+            _ = model.activeProfile
+            _ = model.consistency
+            _ = model.config.profiles
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.updateIcon()
+                self?.startObservingIcon()
+            }
         }
     }
 
     private func updateIcon() {
-        let account = model.appliedClaudeAccount
-        let letter = model.activeProfile?.name ?? account?.nickname ?? "M"
-        let color = (model.activeProfile?.color ?? account?.color).map { NSColor($0.color) } ?? .systemGray
-        statusItem?.button?.image = StatusIcon.image(letter: letter, color: color)
+        let alert: Bool = if case .problems = model.consistency { true } else { false }
+        if let profile = model.activeProfile {
+            statusItem?.button?.image = StatusIcon.image(for: profile, alert: alert)
+            statusItem?.button?.toolTip = "MultiCred · \(profile.name)"
+        } else {
+            statusItem?.button?.image = StatusIcon.image(letter: "M", color: .systemGray, alert: alert)
+            statusItem?.button?.toolTip = "MultiCred"
+        }
     }
 
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        menu.addItem(disabled(modeTitle))
         if model.isTestMode {
-            menu.addItem(disabled("HOME de teste: \(model.environment.home.path)"))
+            menu.addItem(disabled("MODO DE TESTE · nada no seu Mac é alterado"))
+            menu.addItem(.separator())
+        }
+
+        guard model.isInstalled else {
+            menu.addItem(action("Configurar MultiCred…", #selector(openMain), key: "", symbol: "wand.and.stars"))
+            menu.addItem(.separator())
+            menu.addItem(quitItem())
+            return
+        }
+
+        let header = NSMenuItem()
+        let hosting = NSHostingView(rootView: MenuHeaderView(model: model) { [weak self, weak menu] in
+            menu?.cancelTracking()
+            self?.windows.show(.verify)
+        })
+        hosting.frame.size = hosting.fittingSize
+        header.view = hosting
+        menu.addItem(header)
+        menu.addItem(.separator())
+
+        menu.addItem(NSMenuItem.sectionHeader(title: "Perfis"))
+        for (index, profile) in model.config.profiles.enumerated() {
+            let item = NSMenuItem(title: profile.name, action: #selector(switchProfileFromMenu(_:)), keyEquivalent: index < 9 ? "\(index + 1)" : "")
+            item.target = self
+            item.representedObject = profile.id
+            item.image = StatusIcon.image(for: profile, size: 18)
+            item.state = profile.id == model.state.profileId ? .on : .off
+            item.isEnabled = !model.isSwitching
+            if model.needsClaudeLogin(profile) {
+                if #available(macOS 14.4, *) {
+                    item.subtitle = "⚠︎ Claude precisa entrar"
+                } else {
+                    item.title += "  ⚠︎ Claude precisa entrar"
+                }
+            }
+            menu.addItem(item)
+        }
+        if model.config.profiles.isEmpty {
+            menu.addItem(action("Criar um perfil…", #selector(newProfile), key: "", symbol: "plus"))
         }
         menu.addItem(.separator())
 
@@ -52,41 +118,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         claudeItem.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil)
         claudeItem.submenu = claudeSubmenu()
         menu.addItem(claudeItem)
-        menu.addItem(action("Contas Claude…", #selector(openClaudeAccounts), symbol: "person"))
         menu.addItem(.separator())
 
-        menu.addItem(disabled("Ferramentas"))
-        for tool in Tool.allCases {
-            menu.addItem(disabled("  \(tool.displayName): \(toolPaths[tool] ?? "procurando…")"))
+        menu.addItem(action("Verificar…", #selector(openVerify), key: "r", symbol: "checkmark.shield"))
+        menu.addItem(action("Contas…", #selector(openAccounts), key: "", symbol: "person"))
+        menu.addItem(action("Ajustes…", #selector(openSettings), key: ",", symbol: "gearshape"))
+        menu.addItem(.separator())
+        menu.addItem(quitItem())
+
+        Task {
+            await model.refreshClaudeStatuses()
+            if (model.verification?.checkedAt).map({ Date().timeIntervalSince($0) > 120 }) ?? true {
+                await model.verify(checkTokens: false)
+            }
         }
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Sair do MultiCred", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-
-        Task { await model.refreshClaudeStatuses() }
     }
 
     private func claudeSubmenu() -> NSMenu {
         let submenu = NSMenu()
         let profileName = model.activeProfile?.name
-        submenu.addItem(disabled(profileName.map { "Conta Claude · o perfil continua \($0)" } ?? "Conta Claude"))
+        submenu.addItem(NSMenuItem.sectionHeader(title: profileName.map { "Conta Claude · o perfil continua \($0)" } ?? "Conta Claude"))
 
         let profileAccountId = model.activeProfile?.claudeAccountId
         for account in model.config.claudeAccounts {
-            let status = model.claudeStatus(account)
-            let item: NSMenuItem
-            if status?.isLoggedIn == false, case .loggedOut? = status {
-                item = NSMenuItem(title: "\(account.nickname) · Entrar…", action: #selector(loginFromMenu(_:)), keyEquivalent: "")
-            } else {
-                item = NSMenuItem(title: account.nickname, action: #selector(switchClaudeFromMenu(_:)), keyEquivalent: "")
-            }
+            let loggedOut = model.claudeStatus(account) == .loggedOut
+            let item = NSMenuItem(
+                title: account.nickname + (loggedOut ? " · Entrar…" : ""),
+                action: loggedOut ? #selector(loginFromMenu(_:)) : #selector(switchClaudeFromMenu(_:)),
+                keyEquivalent: ""
+            )
             item.target = self
             item.representedObject = account.id
             item.state = account.id == model.state.appliedClaudeAccountId ? .on : .off
-            item.image = StatusIcon.image(letter: account.nickname, color: NSColor(account.color.color), size: 16)
+            item.image = StatusIcon.image(letter: account.nickname, color: NSColor(hex: account.color.hex), size: 16)
             var subtitle = account.email ?? model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment))
             if account.id == profileAccountId { subtitle += " · do perfil" }
-            item.toolTip = subtitle
-            if #available(macOS 14.4, *) { item.subtitle = subtitle }
+            if #available(macOS 14.4, *) { item.subtitle = subtitle } else { item.toolTip = subtitle }
             item.isEnabled = !model.isSwitching
             submenu.addItem(item)
         }
@@ -94,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.addItem(disabled("Nenhuma conta cadastrada"))
         }
         submenu.addItem(.separator())
-        submenu.addItem(action("Adicionar conta Claude…", #selector(addClaudeAccount), symbol: "plus"))
+        submenu.addItem(action("Adicionar conta Claude…", #selector(addClaudeAccount), key: "", symbol: "plus"))
         submenu.addItem(.separator())
         submenu.addItem(disabled("Vale para novas sessões do Claude Code."))
         submenu.addItem(disabled("Sessões já abertas continuam na conta anterior."))
@@ -103,46 +170,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Actions
 
-    @objc private func openClaudeAccounts() {
-        windows.showClaudeAccounts()
-    }
-
-    @objc private func addClaudeAccount() {
-        windows.showAddClaudeAccount()
-    }
-
-    @objc private func loginFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID, let account = model.config.claudeAccount(id) else { return }
-        windows.showLogin(for: account)
+    @objc private func switchProfileFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID, let profile = model.config.profile(id) else { return }
+        Task {
+            if let error = await model.switchProfile(id) {
+                showError("Não consegui trocar para \(profile.name)", error)
+            } else if model.needsClaudeLogin(profile), let account = model.config.claudeAccount(profile.claudeAccountId) {
+                windows.showClaudeLogin(account)
+            }
+        }
     }
 
     @objc private func switchClaudeFromMenu(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID else { return }
         Task {
             if let error = await model.switchClaudeOnly(to: id) {
-                showError(error)
+                showError("Não consegui trocar a conta Claude", error)
             }
-            updateIcon()
         }
     }
 
-    private func showError(_ message: String) {
+    @objc private func loginFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID, let account = model.config.claudeAccount(id) else { return }
+        windows.showClaudeLogin(account)
+    }
+
+    @objc private func openMain() { windows.show() }
+    @objc private func openVerify() { windows.show(.verify) }
+    @objc private func openAccounts() { windows.show(.claude) }
+    @objc private func openSettings() { windows.show(.settings) }
+    @objc private func newProfile() { windows.show(.newProfile) }
+    @objc private func addClaudeAccount() { windows.show(.claude, then: .addClaude) }
+
+    private func showError(_ title: String, _ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Não consegui trocar a conta Claude"
+        alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
+        alert.addButton(withTitle: "Ok")
+        alert.addButton(withTitle: "Abrir Verificar")
         NSApp.activate()
-        alert.runModal()
+        if alert.runModal() == .alertSecondButtonReturn { windows.show(.verify) }
     }
 
     // MARK: Helpers
 
-    private var modeTitle: String {
-        switch model.environment.mode {
-        case .real: "MultiCred"
-        case .dryRun: "MultiCred · MODO DE TESTE (nada é alterado)"
-        case .test: "MultiCred · testes"
-        }
+    private func quitItem() -> NSMenuItem {
+        NSMenuItem(title: "Sair do MultiCred", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
     private func disabled(_ title: String) -> NSMenuItem {
@@ -151,8 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    private func action(_ title: String, _ selector: Selector, symbol: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+    private func action(_ title: String, _ selector: Selector, key: String, symbol: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
         item.target = self
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         return item
