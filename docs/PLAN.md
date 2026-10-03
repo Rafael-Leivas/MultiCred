@@ -1,6 +1,6 @@
 # MultiCred v1 — Plano
 
-Status: **aguardando aprovação** (passo 4 do processo). Nenhum código escrito ainda.
+Status: **aprovado em 2026-10-02** — Fase 1 em andamento.
 Última atualização: 2026-10-02.
 
 Referência visual: `perfis-design/` (é a "./design" do documento original). Fonte de verdade
@@ -514,7 +514,7 @@ Progresso:
 - [x] Passo 2 /plan-ceo-review (Hold Scope)
 - [x] Passo 3 /plan-eng-review
 - [x] Passo 4 /plan-design-review
-- [ ] Aprovação do plano
+- [x] Aprovação do plano (2026-10-02, "pode seguir")
 - [ ] Fase 1 · [ ] Fase 2 · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
 
 ### Sequência da Fase 1 (o que o implementador precisa saber)
