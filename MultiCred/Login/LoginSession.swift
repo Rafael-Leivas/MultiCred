@@ -129,9 +129,22 @@ struct LoginCommand {
         env["TERM"] = "xterm-256color"
         env["NO_COLOR"] = nil
 
-        if environment.mode == .real {
-            guard let claude = await model.tools.locate(.claude) else { return .failure(.claudeNotInstalled) }
+        switch model.claudeLoginMode {
+        case .real:
+            guard let claude = await model.claudeLocator.locate(.claude) else { return .failure(.claudeNotInstalled) }
             return .success(LoginCommand(executable: claude.path, arguments: ["auth", "login"], environment: env, workingDirectory: environment.home.path))
+        case .realInSandbox:
+            // Never the default account: its keychain item is shared with the
+            // user's real ~/.claude login.
+            guard !account.isDefault else { return .failure(.defaultAccountInTestMode) }
+            guard let directory = account.configDir, directory.hasPrefix(environment.home.path + "/") else {
+                return .failure(.outsideSandbox)
+            }
+            guard let claude = await model.claudeLocator.locate(.claude) else { return .failure(.claudeNotInstalled) }
+            env["PATH"] = ([claude.deletingLastPathComponent().path] + (env["PATH"].map { [$0] } ?? [])).joined(separator: ":")
+            return .success(LoginCommand(executable: claude.path, arguments: ["auth", "login"], environment: env, workingDirectory: environment.home.path))
+        case .simulated:
+            break
         }
         return .success(LoginCommand(
             executable: LoginSimulator.executable,
@@ -144,10 +157,14 @@ struct LoginCommand {
 
 enum LoginLaunchError: Error {
     case claudeNotInstalled
+    case defaultAccountInTestMode
+    case outsideSandbox
 
     var message: String {
         switch self {
         case .claudeNotInstalled: "Claude Code não foi encontrado. Instale com: curl -fsSL https://claude.ai/install.sh | bash"
+        case .defaultAccountInTestMode: UserMessages.defaultAccountInTestMode
+        case .outsideSandbox: "No modo de teste, a pasta da conta precisa ficar dentro do HOME de teste."
         }
     }
 }

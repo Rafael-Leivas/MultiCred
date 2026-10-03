@@ -4,6 +4,7 @@ import MultiCredCore
 /// Portuguese, user-facing text for core errors. The core stays language-neutral.
 enum UserMessages {
     static let busy = "Uma troca já está em andamento."
+    static let defaultAccountInTestMode = "No modo de teste, o login real só funciona em contas com pasta própria. A conta padrão usaria o mesmo item do Keychain da sua conta real em ~/.claude."
 
     static func describe(_ error: any Error) -> String {
         switch error {

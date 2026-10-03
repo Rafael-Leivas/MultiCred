@@ -39,6 +39,7 @@ struct ClaudeAccountsListPage: View {
     let model: AppModel
     let navigator: AccountsNavigator
     @State private var pendingRemoval: ClaudeAccount?
+    @State private var pendingLogout: ClaudeAccount?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,6 +69,7 @@ struct ClaudeAccountsListPage: View {
                         row(account)
                             .contextMenu {
                                 Button("Entrar…") { navigator.showLogin(account) }
+                                Button("Sair da conta…") { pendingLogout = account }
                                 Divider()
                                 Button("Remover conta…", role: .destructive) { pendingRemoval = account }
                             }
@@ -88,7 +90,20 @@ struct ClaudeAccountsListPage: View {
         } message: { account in
             let used = model.profilesUsing(account.id).map(\.name)
             Text((used.isEmpty ? "" : "Usada em: \(used.joined(separator: ", ")). Esses perfis deixam de trocar o Claude. ")
-                + "A pasta e o login continuam no seu Mac.")
+                + "A pasta e o login continuam no seu Mac. Para apagar o login, use \"Sair da conta\" antes.")
+        }
+        .confirmationDialog(
+            "Sair da conta \(pendingLogout?.nickname ?? "")?",
+            isPresented: Binding(get: { pendingLogout != nil }, set: { if !$0 { pendingLogout = nil } }),
+            presenting: pendingLogout
+        ) { account in
+            Button("Sair da conta") {
+                Task {
+                    if let error = await model.logoutClaudeAccount(account.id) { model.lastError = error }
+                }
+            }
+        } message: { _ in
+            Text("O Claude Code apaga o login desta conta (só desta pasta). Para usá-la de novo, será preciso entrar outra vez.")
         }
     }
 
@@ -169,7 +184,11 @@ struct AddClaudeAccountPage: View {
                 Picker("Pasta", selection: $mode) {
                     Text("Nova pasta: \(suggestedPath)").tag(FolderMode.new)
                     Text("Pasta que já existe").tag(FolderMode.existing)
-                    if !hasDefaultAccount { Text("~/.claude (conta padrão)").tag(FolderMode.standard) }
+                    // Hidden in "real login in test mode": the default account shares
+                    // its keychain item with the user's real ~/.claude login.
+                    if !hasDefaultAccount, model.claudeLoginMode != .realInSandbox {
+                        Text("~/.claude (conta padrão)").tag(FolderMode.standard)
+                    }
                 }
                 .pickerStyle(.radioGroup)
                 if mode == .existing {

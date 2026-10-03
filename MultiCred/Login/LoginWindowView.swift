@@ -18,8 +18,8 @@ struct LoginPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if model.isTestMode {
-                Label("Simulação do modo de teste: o navegador não abre. Digite qualquer código para conectar, ou \"erro\" para ver a tela de erro.", systemImage: "testtube.2")
+            if let notice = testModeNotice {
+                Label(notice, systemImage: "testtube.2")
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -32,7 +32,7 @@ struct LoginPage: View {
             if isOutputVisible {
                 TerminalOutput(
                     directory: model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment)),
-                    command: model.isTestMode ? "claude auth login (simulado)" : "claude auth login",
+                    command: model.claudeLoginMode == .simulated ? "claude auth login (simulado)" : "claude auth login",
                     text: session.output
                 )
             }
@@ -132,7 +132,18 @@ struct LoginPage: View {
     }
 
     /// The simulator's URL is fake; only the real CLI gives one worth opening.
-    private var canOpenBrowser: Bool { !model.isTestMode }
+    private var canOpenBrowser: Bool { model.claudeLoginMode != .simulated }
+
+    private var testModeNotice: String? {
+        switch model.claudeLoginMode {
+        case .simulated:
+            "Simulação do modo de teste: o navegador não abre. Digite qualquer código para conectar, ou \"erro\" para ver a tela de erro."
+        case .realInSandbox:
+            "Modo de teste com login real: o navegador abre e você entra numa conta de verdade, guardada numa pasta de teste. Depois do teste, use \"Sair da conta\" na lista para apagar esse login do Keychain."
+        case .real:
+            nil
+        }
+    }
 
     private var message: String {
         switch session.phase {

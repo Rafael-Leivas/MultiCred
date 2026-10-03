@@ -21,9 +21,17 @@ final class AppModel {
     /// Last user-facing problem, shown by the window that triggered it.
     var lastError: String?
 
+    let claudeLoginMode: ClaudeLoginMode
+    /// Finds the `claude` used for login and logout (the real one in `.realInSandbox`).
+    let claudeLocator: ToolLocator
+
     init(environment: SystemEnvironment) {
         self.environment = environment
         tools = ToolLocator(environment: environment)
+        claudeLoginMode = AppRuntime.claudeLoginMode(for: environment)
+        claudeLocator = claudeLoginMode == .realInSandbox
+            ? ToolLocator(environment: environment, wellKnownDirectories: AppRuntime.realClaudeSearchDirectories)
+            : ToolLocator(environment: environment)
         log = EventLog(directory: environment.logsDirectory)
         repository = ConfigRepository(environment: environment)
         engine = SwitchEngine(environment: environment, tools: tools, log: log)
@@ -88,6 +96,43 @@ final class AppModel {
             claudeStatuses[accountId] = nil
         } catch {
             lastError = UserMessages.describe(error)
+        }
+    }
+
+    /// Logs the account out through Claude Code (`claude auth logout`), which
+    /// removes only that folder's keychain item. Returns a user-facing error or nil.
+    func logoutClaudeAccount(_ accountId: UUID) async -> String? {
+        guard let account = config.claudeAccount(accountId) else { return nil }
+        defer { Task { await refreshClaudeStatus(accountId) } }
+
+        switch claudeLoginMode {
+        case .simulated:
+            // The simulator only wrote a fake .claude.json inside the sandbox.
+            let file = ClaudeAccountFiles.stateFile(for: account, environment: environment)
+            guard file.path.hasPrefix(environment.home.path + "/") else { return nil }
+            try? FileManager.default.removeItem(at: file)
+            return nil
+        case .realInSandbox, .real:
+            if claudeLoginMode == .realInSandbox, account.isDefault {
+                return UserMessages.defaultAccountInTestMode
+            }
+            guard let claude = await claudeLocator.locate(.claude) else {
+                return LoginLaunchError.claudeNotInstalled.message
+            }
+            // In test mode the shared runner only records commands; logout must really run.
+            let runner: any CommandRunner = claudeLoginMode == .real ? environment.runner : ProcessRunner()
+            let cli = ClaudeCLI(
+                runner: runner,
+                executable: claude,
+                baseEnvironment: environment.baseProcessEnvironment(path: await tools.searchDirectories())
+            )
+            do {
+                try await cli.logout(account)
+                log.log(.info, "claude logout for \(account.nickname)")
+                return nil
+            } catch {
+                return UserMessages.describe(error)
+            }
         }
     }
 
