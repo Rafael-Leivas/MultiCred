@@ -17,9 +17,6 @@ public enum PreflightFailure: Error, Equatable, Sendable {
     case profileNotFound
     case claudeAccountNotFound
     case toolMissing(Tool)
-    /// The account is not in `gh auth status`, or its token no longer works.
-    case githubAccountNotLoggedIn(host: String, user: String)
-    case githubStatusUnavailable(String)
     case claudeDirectoryMissing(String)
     case apiKeyMissing(nickname: String, envVar: String)
     case keychainUnavailable(String)

@@ -129,25 +129,14 @@ public actor SwitchEngine {
         let childEnvironment = environment.baseProcessEnvironment(path: await tools.searchDirectories())
 
         // Preflight: everything that can be checked without changing anything.
-        var githubPlan: (cli: GitHubCLI, host: String, login: String, previous: String?)?
+        // gh token validity is deliberately not checked here: `gh auth status`
+        // tests every token over the network, which would make switching slow and
+        // impossible offline. An account gh does not know makes `gh auth switch`
+        // fail, and the transaction rolls back. Token health belongs to Verify.
+        var githubPlan: (cli: GitHubCLI, account: GitHubAccount)?
         if touchesGitAndGitHub, let account = config.githubAccount(profile?.githubAccountId) {
             guard let gh = await tools.locate(.gh) else { throw SwitchError.preflight(.toolMissing(.gh)) }
-            let cli = GitHubCLI(runner: environment.runner, executable: gh, baseEnvironment: childEnvironment)
-            let logins: [GitHubLogin]
-            do {
-                logins = try await cli.logins()
-            } catch {
-                throw SwitchError.preflight(.githubStatusUnavailable(String(describing: error)))
-            }
-            guard let login = logins.first(where: {
-                $0.host.caseInsensitiveCompare(account.host) == .orderedSame
-                    && $0.login.caseInsensitiveCompare(account.username) == .orderedSame
-                    && $0.isUsable
-            }) else {
-                throw SwitchError.preflight(.githubAccountNotLoggedIn(host: account.host, user: account.username))
-            }
-            let active = logins.first { $0.host == login.host && $0.active }?.login
-            githubPlan = (cli, login.host, login.login, active)
+            githubPlan = (GitHubCLI(runner: environment.runner, executable: gh, baseEnvironment: childEnvironment), account)
         }
         if case let .directory(directory) = claudeTarget {
             var isDirectory: ObjCBool = false
@@ -171,7 +160,7 @@ public actor SwitchEngine {
             steps.append(gitStep(GitConfigRenderer.render(config.gitIdentity(profile?.gitIdentityId), environment: environment)))
         }
         if let githubPlan {
-            steps.append(githubStep(githubPlan.cli, host: githubPlan.host, login: githubPlan.login, previous: githubPlan.previous))
+            steps.append(githubStep(githubPlan.cli, account: githubPlan.account))
         }
         if claudeTarget != .unchanged {
             steps.append(launchdStep(claudeTarget, launchctl: Launchctl(runner: environment.runner, baseEnvironment: childEnvironment)))
@@ -224,12 +213,13 @@ public actor SwitchEngine {
         }
     }
 
-    private func githubStep(_ cli: GitHubCLI, host: String, login: String, previous: String?) -> SwitchStep {
+    private func githubStep(_ cli: GitHubCLI, account: GitHubAccount) -> SwitchStep {
         SwitchStep(kind: .github) {
-            guard previous != login else { return {} }
-            try await cli.switchAccount(host: host, user: login)
+            let previous = try await cli.activeLogin(host: account.host)
+            if let previous, previous.caseInsensitiveCompare(account.username) == .orderedSame { return {} }
+            try await cli.switchAccount(host: account.host, user: account.username)
             return {
-                if let previous { try await cli.switchAccount(host: host, user: previous) }
+                if let previous { try await cli.switchAccount(host: account.host, user: previous) }
             }
         }
     }

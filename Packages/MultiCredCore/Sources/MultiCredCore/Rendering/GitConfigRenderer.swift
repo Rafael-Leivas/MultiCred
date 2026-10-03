@@ -22,10 +22,14 @@ public enum GitConfigRenderer {
     }
 
     /// git config value quoting: wrap in double quotes, escape `\` and `"`.
-    /// Newlines are rejected earlier by `Validation`.
+    /// `Validation` rejects control characters before any switch; as a second
+    /// line of defense they become spaces here, so a newline can never start a
+    /// new config section.
     static func quote(_ value: String) -> String {
-        precondition(!Validation.hasControlCharacters(value), "control characters must be rejected by Validation")
-        let escaped = value
+        let flattened = String(value.unicodeScalars.map {
+            CharacterSet.controlCharacters.contains($0) ? " " : Character($0)
+        })
+        let escaped = flattened
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""

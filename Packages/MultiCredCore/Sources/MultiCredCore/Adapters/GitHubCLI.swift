@@ -31,7 +31,8 @@ public struct GitHubCLI: Sendable {
         self.environment = env
     }
 
-    /// Every account gh knows, on every host.
+    /// Every account gh knows, on every host. Slow and network-bound: gh tests
+    /// each token online. Use for status screens, never on the switch path.
     public func logins() async throws -> [GitHubLogin] {
         let result = try await runner.runChecked(request(["auth", "status", "--json", "hosts"]))
         struct Response: Decodable { let hosts: [String: [GitHubLogin]] }
@@ -43,8 +44,11 @@ public struct GitHubCLI: Sendable {
         }
     }
 
+    /// Active account for `host`, read from gh's local config (offline, fast).
     public func activeLogin(host: String) async throws -> String? {
-        try await logins().first { $0.host == host && $0.active }?.login
+        let result = try await runner.run(request(["config", "get", "-h", host, "user"]))
+        let login = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.succeeded && !login.isEmpty ? login : nil
     }
 
     public func switchAccount(host: String, user: String) async throws {

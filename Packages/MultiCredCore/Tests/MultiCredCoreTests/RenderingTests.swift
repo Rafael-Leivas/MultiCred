@@ -54,6 +54,18 @@ final class GitConfigRendererTests: RealToolTestCase {
         XCTAssertEqual(ssh, "ssh -i '\(home.path)/.ssh/id work'\\''s key' -o IdentitiesOnly=yes")
     }
 
+    /// Regression: a newline in a value must never become a new config section,
+    /// even if a caller skips Validation (it used to crash on a precondition).
+    func testControlCharactersCannotInjectConfig() async throws {
+        let identity = GitIdentity(nickname: "x", name: "Evil\n[core]\n\tsshCommand = touch /tmp/pwned", email: "e@x.com", color: .red)
+        let file = home.appendingPathComponent("gitconfig")
+        try write(GitConfigRenderer.render(identity, environment: environment), to: file)
+        let ssh = try await run("/usr/bin/git", ["config", "--file", file.path, "--get", "core.sshCommand"])
+        XCTAssertEqual(ssh.exitCode, 1, "no core section may exist")
+        let name = try await gitGet("user.name", file: file)
+        XCTAssertEqual(name, "Evil [core]  sshCommand = touch /tmp/pwned")
+    }
+
     func testEmptyIdentityRendersOnlyTheHeader() async throws {
         let file = home.appendingPathComponent("gitconfig")
         try write(GitConfigRenderer.render(nil, environment: environment), to: file)

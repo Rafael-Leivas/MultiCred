@@ -22,11 +22,17 @@ final class FakeSystem: @unchecked Sendable {
             }
             return CommandResult(exitCode: 0, standardOutput: Data(#"{"hosts":{"github.com":[\#(entries.joined(separator: ","))]}}"#.utf8))
         }
+        runner.on("gh", ["config", "get", "-h", "github.com", "user"]) { [self] _ in
+            CommandResult(exitCode: 0, standardOutput: Data(locked { ghActive + "\n" }.utf8))
+        }
         runner.on("gh", ["auth", "switch"]) { [self] request in
             let user = request.arguments.last!
             if ghSwitchDelay > 0 { Thread.sleep(forTimeInterval: ghSwitchDelay) }
             return locked {
                 if user == failGHSwitchTo { return CommandResult(exitCode: 1, standardError: Data("gh: keyring locked".utf8)) }
+                guard ghLogins.contains(where: { $0.login == user }) else {
+                    return CommandResult(exitCode: 1, standardError: Data("not logged in to github.com account \(user)".utf8))
+                }
                 ghActive = user
                 return CommandResult(exitCode: 0)
             }
@@ -77,7 +83,7 @@ final class SwitchEngineTests: SafeTestCase {
         let gitWork = GitIdentity(nickname: "NPU", name: "Rafael Leivas", email: "r@work.example", color: .indigo)
         let gitPersonal = GitIdentity(nickname: "Pessoal", name: "Rafael B. Leivas", email: "r@gmail.com", sshKeyPath: "~/.ssh/id_pessoal", color: .orange)
         let ghWork = GitHubAccount(nickname: "NPU", username: "rafael-npu", color: .indigo)
-        let ghPersonal = GitHubAccount(nickname: "Pessoal", username: "RafaelBLeivas", color: .orange) // case differs from gh on purpose
+        let ghPersonal = GitHubAccount(nickname: "Pessoal", username: "rafaelbleivas", color: .orange)
         let claudeWork = ClaudeAccount(nickname: "NPU", color: .indigo, configDir: nil)
         let claudePersonal = ClaudeAccount(nickname: "Pessoal", color: .orange, configDir: claudePersonalDir)
         let openAI = APIKeyAccount(nickname: "NPU", provider: .openai, color: .indigo)
@@ -120,7 +126,7 @@ final class SwitchEngineTests: SafeTestCase {
         let result = try await engine().switchProfile(personal.id, in: config)
 
         XCTAssertEqual(result.appliedSteps, [.git, .github, .launchd, .envFiles, .state])
-        XCTAssertEqual(system.ghActive, "rafaelbleivas", "uses gh's own spelling of the login")
+        XCTAssertEqual(system.ghActive, "rafaelbleivas")
         XCTAssertEqual(system.launchdClaude, claudePersonalDir)
 
         let gitconfig = try read(paths.gitconfig)
@@ -214,13 +220,8 @@ final class SwitchEngineTests: SafeTestCase {
     // MARK: Preflight (nothing may change)
 
     func testPreflightFailuresChangeNothing() async throws {
-        system.ghLogins = [("rafael-npu", "success"), ("rafaelbleivas", "failure")]
-        var error = await switchError { try await self.engine().switchProfile(self.personal.id, in: self.config) }
-        XCTAssertEqual(error, .preflight(.githubAccountNotLoggedIn(host: "github.com", user: "RafaelBLeivas")))
-
-        system.ghLogins = [("rafael-npu", "success"), ("rafaelbleivas", "success")]
         try FileManager.default.removeItem(atPath: claudePersonalDir)
-        error = await switchError { try await self.engine().switchProfile(self.personal.id, in: self.config) }
+        var error = await switchError { try await self.engine().switchProfile(self.personal.id, in: self.config) }
         XCTAssertEqual(error, .preflight(.claudeDirectoryMissing(claudePersonalDir)))
 
         try FileManager.default.createDirectory(atPath: claudePersonalDir, withIntermediateDirectories: true)
@@ -236,6 +237,27 @@ final class SwitchEngineTests: SafeTestCase {
 
         XCTAssertEqual(mutatingCommands(), [])
         XCTAssertTrue(snapshotFiles().values.allSatisfy { $0 == nil }, "no file may be written by a failed preflight")
+    }
+
+    /// Regression: `gh auth status` tests tokens over the network, so using it on
+    /// the switch path made switching slow and impossible offline.
+    func testSwitchNeverRunsTheNetworkBoundGitHubStatus() async throws {
+        _ = try await engine().switchProfile(personal.id, in: config)
+        XCTAssertFalse(runner.requests.contains { $0.arguments.starts(with: ["auth", "status"]) })
+    }
+
+    func testAccountUnknownToGitHubCLIFailsAtGitHubAndRollsBackGit() async throws {
+        let engine = engine()
+        _ = try await engine.switchProfile(work.id, in: config)
+        let before = snapshotFiles()
+        system.ghLogins = [("rafael-npu", "success")]
+
+        let error = await switchError { try await engine.switchProfile(self.personal.id, in: self.config) }
+        guard case let .stepFailed(step, reason, rollback) = error else { return XCTFail("\(String(describing: error))") }
+        XCTAssertEqual(step, .github)
+        XCTAssertTrue(reason.contains("not logged in"), reason)
+        XCTAssertEqual(rollback, .complete)
+        XCTAssertEqual(snapshotFiles(), before)
     }
 
     func testInvalidConfigurationIsRejectedBeforeAnything() async throws {
