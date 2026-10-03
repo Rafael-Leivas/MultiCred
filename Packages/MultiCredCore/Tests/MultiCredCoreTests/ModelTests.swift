@@ -91,6 +91,19 @@ final class ValidationTests: XCTestCase {
         XCTAssertTrue(issues.contains(.invalidGitHubUsername(owner: config.githubAccounts[0].id)))
     }
 
+    /// Security audit: values passed to gh as arguments must not look like options.
+    func testGitHubHostAndUserCannotStartWithADash() {
+        var config = sampleConfig()
+        config.githubAccounts[0].host = "-h"
+        config.githubAccounts[0].username = "-x"
+        let issues = Validation.issues(in: config)
+        XCTAssertTrue(issues.contains(.invalidHost(owner: config.githubAccounts[0].id)))
+        XCTAssertTrue(issues.contains(.invalidGitHubUsername(owner: config.githubAccounts[0].id)))
+        config.githubAccounts[0].host = "github.example.com:8443"
+        config.githubAccounts[0].username = "rafael-npu"
+        XCTAssertEqual(Validation.issues(in: config), [])
+    }
+
     func testConfigRoundTripsThroughJSON() throws {
         let config = sampleConfig()
         let data = try JSONFileStore<Config>.encoder().encode(config)

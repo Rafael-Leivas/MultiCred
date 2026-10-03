@@ -37,7 +37,8 @@ public enum Validation {
     }
 
     static func isValidHost(_ host: String) -> Bool {
-        host.range(of: "^[A-Za-z0-9.-]+(:[0-9]+)?$", options: .regularExpression) != nil
+        // Must start with a letter or digit: a leading "-" would be read as an option by gh.
+        host.range(of: "^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]+)?$", options: .regularExpression) != nil
     }
 
     static func isPlausibleEmail(_ email: String) -> Bool {
