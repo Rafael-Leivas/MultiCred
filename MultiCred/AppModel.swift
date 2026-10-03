@@ -138,7 +138,7 @@ final class AppModel {
                 profile: activeProfile,
                 claudeAccount: appliedClaudeAccount,
                 steps: result.appliedSteps,
-                runningClaudeSessions: processScanner.countProcesses(named: "claude"),
+                runningClaudeSessions: processScanner.claudeCodeSessionCount(),
                 claudeOnly: claudeOnly
             ))
             Task { await verify(checkTokens: false) }
@@ -465,9 +465,20 @@ final class AppModel {
             log.log(.info, "login item \(enabled ? "on" : "off") (test mode: not registered)")
             return
         }
+        // A build run from Xcode's folder would leave a stale login item behind.
+        let bundlePath = Bundle.main.bundlePath
+        let inApplications = bundlePath.hasPrefix("/Applications/") || bundlePath.hasPrefix(environment.home.path + "/Applications/")
+        if enabled, !inApplications {
+            lastError = "“Abrir ao iniciar a sessão” só funciona com o MultiCred na pasta Aplicativos. Mova o app para lá e ative de novo em Ajustes."
+            return
+        }
         do {
             if enabled {
                 try SMAppService.mainApp.register()
+                if SMAppService.mainApp.status == .requiresApproval {
+                    lastError = "O macOS pediu aprovação: ative o MultiCred em Ajustes do Sistema › Geral › Itens de Início."
+                    SMAppService.openSystemSettingsLoginItems()
+                }
             } else if SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
             }

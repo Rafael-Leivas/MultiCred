@@ -192,7 +192,7 @@ public struct Verifier: Sendable {
         }
 
         // Sessions.
-        let sessions = processes.countProcesses(named: "claude")
+        let sessions = processes.claudeCodeSessionCount()
         if sessions > 0 {
             items.append(CheckItem(
                 id: "claude.sessions", section: .sessions,

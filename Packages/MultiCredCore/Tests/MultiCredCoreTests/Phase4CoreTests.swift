@@ -193,7 +193,7 @@ final class VerifierTests: SafeTestCase {
     }
 
     private func verify(_ state: ActiveState, status: ClaudeLoginStatus = .loggedIn(email: "r@work.example"), sessions: Int = 0) async -> VerificationReport {
-        await Verifier(environment: environment, tools: FakeTools(), processes: FixedProcessScanner(["claude": sessions]))
+        await Verifier(environment: environment, tools: FakeTools(), processes: FixedProcessScanner(sessions: sessions))
             .run(config: config, state: state, checkGitHubTokens: false) { _ in status }
     }
 
@@ -250,12 +250,36 @@ final class VerifierTests: SafeTestCase {
 }
 
 final class ProcessScannerTests: XCTestCase {
-    func testCountsOwnProcessesByName() async throws {
-        let scanner = SystemProcessScanner()
-        XCTAssertEqual(scanner.countProcesses(named: "multicred-no-such-process"), 0)
-        let task = Task { try await ProcessRunner().run(CommandRequest(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["3"], timeout: .seconds(10))) }
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertGreaterThanOrEqual(scanner.countProcesses(named: "sleep"), 1)
-        task.cancel()
+    /// Process tree observed on a real Mac with the native Claude Code install:
+    /// three sessions (two launched from ~/.local/bin, one from the app) with
+    /// version binaries and ClaudeCode.app helpers below them.
+    func testCountsOnlySessionRootsInARealTree() {
+        let home = "/Users/u"
+        let tree: [(Int32, Int32, String)] = [
+            (28412, 1, "\(home)/.local/bin/claude"),
+            (28563, 28412, "\(home)/.local/share/claude/versions/2.1.288"),
+            (28566, 28412, "\(home)/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude"),
+            (28597, 28563, "\(home)/.local/share/claude/versions/2.1.288"),
+            (42763, 1, "\(home)/.local/bin/claude"),
+            (80858, 1, "\(home)/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude"),
+            (80881, 80858, "\(home)/.local/share/claude/versions/2.1.285"),
+            (90000, 1, "/bin/zsh"),
+            (90001, 90000, "/opt/homebrew/bin/node"),
+        ]
+        let entries = tree.map { ProcessEntry(pid: $0.0, parent: $0.1, path: $0.2) }
+        XCTAssertEqual(SystemProcessScanner.countSessions(in: entries), 3)
+    }
+
+    func testSessionStartedFromAShellCounts() {
+        let entries = [
+            ProcessEntry(pid: 10, parent: 1, path: "/bin/zsh"),
+            ProcessEntry(pid: 11, parent: 10, path: "/Users/u/.local/share/claude/versions/2.1.288"),
+        ]
+        XCTAssertEqual(SystemProcessScanner.countSessions(in: entries), 1)
+        XCTAssertEqual(SystemProcessScanner.countSessions(in: []), 0)
+    }
+
+    func testRealScanDoesNotCrash() {
+        XCTAssertGreaterThanOrEqual(SystemProcessScanner().claudeCodeSessionCount(), 0)
     }
 }
