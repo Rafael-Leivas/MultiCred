@@ -1,6 +1,6 @@
 # MultiCred v1 — Plano
 
-Status: **aprovado em 2026-10-02** — Fase 2 concluída; aguardando ok para a Fase 3.
+Status: **aprovado em 2026-10-02** — Fase 3 concluída; aguardando ok para a Fase 4.
 Última atualização: 2026-10-02.
 
 Referência visual: `perfis-design/` (é a "./design" do documento original). Fonte de verdade
@@ -88,6 +88,8 @@ Tudo abaixo está **aprovado por delegação** e pode ser revisto.
 | D26 | Login Claude aceita conclusão automática (sem colar código) | Spike: `claude auth login` concluiu sozinho com navegador já logado |
 | D27 | A troca não usa `gh auth status` (testa tokens na rede): conta anterior via `gh config get -h <host> user`; conta desconhecida faz o `gh auth switch` falhar e o rollback desfaz o git. Saúde do token fica no Verificar e em Contas | /review da Fase 2: troca ficaria lenta e impossível offline |
 | D28 | O Verificar lê o git com `git config --includes` (ou sem escopo): leitura com `--global` sozinho ignora `[include]` | Teste da Fase 2 com git real |
+| D29 | Pseudo-terminal próprio (`PseudoTerminalProcess`: `posix_openpt` + `Process`) e saída como texto monoespaçado, sem SwiftTerm | Avaliação da Fase 3: SwiftTerm 1.20 exige Metal Toolchain + plugin de build; 1.2.x não expõe o processo (não dá para encerrar o `claude`). Zero dependências externas |
+| D30 | Modo de teste roda `LoginSimulator` (`/bin/sh`) no lugar do `claude auth login`; recusa escrever fora do HOME de teste | Permite testar a janela de login sem tocar no Claude Code real |
 | D24 | Menu via `NSStatusItem` + `NSMenu` com cabeçalho SwiftUI em `NSMenuItem.view` (o `MenuBarExtra(.menu)` não aceita o cabeçalho rico do 1a) | Fidelidade ao design |
 
 ---
@@ -518,7 +520,7 @@ Progresso:
 - [x] Passo 3 /plan-eng-review
 - [x] Passo 4 /plan-design-review
 - [x] Aprovação do plano (2026-10-02, "pode seguir")
-- [x] Fase 1 (commits a68d98f, 72969d2, a1bdfc4 + spike; 45 testes; spike em docs/spikes/claude-config-dir.md, item (a) bloqueado pelo classificador) · [x] Fase 2 (commit b14957a + correções do review; 92 testes) · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
+- [x] Fase 1 (commits a68d98f, 72969d2, a1bdfc4 + spike; 45 testes; spike em docs/spikes/claude-config-dir.md, item (a) bloqueado pelo classificador) · [x] Fase 2 (commit b14957a + correções do review; 92 testes) · [x] Fase 3 (123 testes; janela de login com pseudo-terminal próprio, contas Claude, troca só do Claude) · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
 
 ### Sequência da Fase 1 (o que o implementador precisa saber)
 - Hora 1: criar pacote `MultiCredCore` (swift-tools 6.0, macOS 14) e o `.xcodeproj` com pastas
@@ -555,6 +557,13 @@ launchctl setenv    | app gráfico aberto antes da troca   | n/a       | —    
   como array). Os testes existem e rodam sozinhos onde esses shells estiverem instalados.
 - Perfil sem conta Claude mantém a última conta aplicada (D21); perfil sem chaves desexporta todas
   as variáveis gerenciadas.
+
+### Notas da Fase 3
+- A janela de contas Claude e o submenu são provisórios em estilo; a Fase 4 os encaixa no design 01a/03.
+- Formato do JSON de `claude auth status` continua não observado (leitura tolerante + fallback pelo
+  `oauthAccount` do `.claude.json`). Confirmar no primeiro uso em modo real.
+- Ordem de saída do pseudo-terminal → parser garantida por `DispatchQueue.main` (achado do /review);
+  sem teste automatizado (fica no target do app), coberta pelo roteiro manual.
 
 ## 10. Implementação — tarefas
 Cada fase de §8 é uma tarefa com verificação própria. Tarefas finas são criadas no início de cada fase.

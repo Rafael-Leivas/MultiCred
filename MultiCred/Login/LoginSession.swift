@@ -39,11 +39,13 @@ final class LoginSession {
                 arguments: command.arguments,
                 environment: command.environment,
                 currentDirectory: URL(fileURLWithPath: command.workingDirectory),
+                // DispatchQueue.main keeps FIFO order; separate Tasks would not,
+                // and the parser must see chunks (and the exit) in order.
                 onOutput: { [weak self] data in
-                    Task { @MainActor in self?.received(data) }
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self?.received(data) } }
                 },
                 onExit: { [weak self] status in
-                    Task { @MainActor in self?.update { $0.processExited(status: status) } }
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self?.update { $0.processExited(status: status) } } }
                 }
             )
         } catch {
