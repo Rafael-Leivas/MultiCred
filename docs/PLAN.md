@@ -48,9 +48,8 @@ Decisões que fecham a v1 (todas registradas em §2):
 - **Esta sessão de desenvolvimento roda com `CLAUDE_CONFIG_DIR=~/.claude-pessoal`.** Qualquer passo que
   mexa nessa pasta ou no Keychain do Claude derruba a própria sessão. Reforça a regra de segurança.
 
-A confirmar no spike da Fase 1 (§7): formato do JSON de `claude auth status`, se ele não imprime
-segredo, se o login completa sozinho pelo callback local (sem colar código), nome do item de Keychain
-por pasta, e `gh auth status --json`.
+Spike da Fase 1 concluído: ver `docs/spikes/claude-config-dir.md` (isolamento por pasta confirmado, D3
+confirmada, D25 e D26 novas). Pendente: formato do JSON de `claude auth status` (Fase 3).
 
 ---
 
@@ -85,6 +84,8 @@ Tudo abaixo está **aprovado por delegação** e pode ser revisto.
 | D21 | Perfil com campo vazio não troca aquele item (git vazio ⇒ arquivo incluído vazio, vale a identidade do usuário) | Mesmo comportamento do `perfis.conf` |
 | D22 | Debug roda em **modo de teste**: HOME temporário + executor que só registra comandos; modo real só com flag explícita | Permite você testar a UI sem tocar no sistema |
 | D23 | Projeto: núcleo em pacote Swift local `MultiCredCore` (testes com `swift test`) + app Xcode com `.pbxproj` de pastas sincronizadas | Sem gerador de projeto instalado; núcleo testável sem UI |
+| D25 | Caminho de conta Claude sempre absoluto, padronizado, sem `/` final e sem `~` (o item de Keychain é `Claude Code-credentials-` + sha256(caminho)[:8]) | Spike da Fase 1: um caractere diferente no caminho = outra conta |
+| D26 | Login Claude aceita conclusão automática (sem colar código) | Spike: `claude auth login` concluiu sozinho com navegador já logado |
 | D24 | Menu via `NSStatusItem` + `NSMenu` com cabeçalho SwiftUI em `NSMenuItem.view` (o `MenuBarExtra(.menu)` não aceita o cabeçalho rico do 1a) | Fidelidade ao design |
 
 ---
@@ -515,7 +516,7 @@ Progresso:
 - [x] Passo 3 /plan-eng-review
 - [x] Passo 4 /plan-design-review
 - [x] Aprovação do plano (2026-10-02, "pode seguir")
-- [~] Fase 1 (fundação pronta: commits a68d98f, 72969d2; 45 testes; spike aguardando autorização) · [ ] Fase 2 · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
+- [x] Fase 1 (commits a68d98f, 72969d2, a1bdfc4 + spike; 45 testes; spike em docs/spikes/claude-config-dir.md, item (a) bloqueado pelo classificador) · [ ] Fase 2 · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
 
 ### Sequência da Fase 1 (o que o implementador precisa saber)
 - Hora 1: criar pacote `MultiCredCore` (swift-tools 6.0, macOS 14) e o `.xcodeproj` com pastas
