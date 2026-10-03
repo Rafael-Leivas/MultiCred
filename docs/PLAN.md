@@ -1,6 +1,9 @@
 # MultiCred v1 — Plano
 
-Status: **aprovado em 2026-10-02** — Fase 3 concluída; aguardando ok para a Fase 4.
+Status: **2026-10-02** — Fases 1–6, revisão, auditoria (docs/SECURITY.md) e README concluídos
+(157 testes). Mudanças desde o design: janela única com navegação (pedido do usuário), mundo
+simulado no modo de teste, contagem de sessões do Claude por processo raiz. Pendente: teste real
+do usuário e entradas finais deste plano.
 Última atualização: 2026-10-02.
 
 Referência visual: `perfis-design/` (é a "./design" do documento original). Fonte de verdade
