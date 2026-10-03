@@ -93,6 +93,12 @@ Tudo abaixo está **aprovado por delegação** e pode ser revisto.
 | D28 | O Verificar lê o git com `git config --includes` (ou sem escopo): leitura com `--global` sozinho ignora `[include]` | Teste da Fase 2 com git real |
 | D29 | Pseudo-terminal próprio (`PseudoTerminalProcess`: `posix_openpt` + `Process`) e saída como texto monoespaçado, sem SwiftTerm | Avaliação da Fase 3: SwiftTerm 1.20 exige Metal Toolchain + plugin de build; 1.2.x não expõe o processo (não dá para encerrar o `claude`). Zero dependências externas |
 | D30 | Modo de teste roda `LoginSimulator` (`/bin/sh`) no lugar do `claude auth login`; recusa escrever fora do HOME de teste | Permite testar a janela de login sem tocar no Claude Code real |
+| D31 | Uma janela única com barra lateral (Perfis, Contas, Verificar, Ajustes) e navegação por páginas; onboarding também nela. Substitui as janelas separadas de Ajustes e Verificar do design | Pedido do usuário: "tudo na mesma visualização, apenas seguindo e voltando" |
+| D32 | Esquema "MultiCred (login real)": login real do Claude só em pastas dentro do HOME de teste; conta padrão recusada | Escolha do usuário; a conta padrão compartilha o item do Keychain com `~/.claude` real |
+| D33 | Modo de teste com mundo simulado (`SandboxCommandRunner`): gh com 2 contas falsas, launchctl em memória, git real só para leitura no sandbox | Permite testar troca, Verificar e correções sem tocar no sistema |
+| D34 | Login do GitHub pelo próprio `gh auth login --web` no pseudo-terminal; depois do login, a conta ativa volta para a do perfil | "Trocar credenciais do GitHub" completo sem o app ver tokens |
+| D35 | Sessões do Claude Code contadas por processo raiz (caminho do executável), não por nome | Instalação nativa usa nomes `claude`, `<versão>` e auxiliares |
+| D36 | Item de login só com o app em /Applications; aviso quando o macOS pede aprovação | Evita item de login apontando para a pasta de build |
 | D24 | Menu via `NSStatusItem` + `NSMenu` com cabeçalho SwiftUI em `NSMenuItem.view` (o `MenuBarExtra(.menu)` não aceita o cabeçalho rico do 1a) | Fidelidade ao design |
 
 ---
@@ -523,7 +529,8 @@ Progresso:
 - [x] Passo 3 /plan-eng-review
 - [x] Passo 4 /plan-design-review
 - [x] Aprovação do plano (2026-10-02, "pode seguir")
-- [x] Fase 1 (commits a68d98f, 72969d2, a1bdfc4 + spike; 45 testes; spike em docs/spikes/claude-config-dir.md, item (a) bloqueado pelo classificador) · [x] Fase 2 (commit b14957a + correções do review; 92 testes) · [x] Fase 3 (123 testes; janela de login com pseudo-terminal próprio, contas Claude, troca só do Claude) · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
+- [x] Fase 1 (commits a68d98f, 72969d2, a1bdfc4 + spike; 45 testes; spike em docs/spikes/claude-config-dir.md, item (a) bloqueado pelo classificador) · [x] Fase 2 (commit b14957a + correções do review; 92 testes) · [x] Fase 3 (123 testes; janela de login com pseudo-terminal próprio, contas Claude, troca só do Claude) · [x] Fase 4 · [x] Fase 5 · [x] Fase 6 (feitas em sequência a pedido do usuário; 157 testes) · [x] /cso (docs/SECURITY.md) · [x] /document-release (README.md)
+- [ ] Teste real do usuário (scripts/release.sh → /Applications)
 
 ### Sequência da Fase 1 (o que o implementador precisa saber)
 - Hora 1: criar pacote `MultiCredCore` (swift-tools 6.0, macOS 14) e o `.xcodeproj` com pastas
