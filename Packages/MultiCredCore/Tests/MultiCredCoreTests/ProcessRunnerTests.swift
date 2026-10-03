@@ -49,6 +49,15 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertEqual(result.stdout, "from stdin")
     }
 
+    /// Regression: writing stdin to a child that exits without reading it raised
+    /// SIGPIPE, which terminates the whole app.
+    func testChildIgnoringLargeStdinDoesNotKillUs() async throws {
+        let input = Data(repeating: 0x61, count: 4_000_000)
+        let result = try await runner.run(CommandRequest(executable: sh, arguments: ["-c", "exit 0"], standardInput: input))
+        XCTAssertEqual(result.exitCode, 0)
+        try await Task.sleep(for: .milliseconds(300)) // let the writer hit the closed pipe
+    }
+
     func testLargeOutputOnBothPipesDoesNotDeadlock() async throws {
         // 200 KB on each pipe, well over the 64 KB pipe buffer.
         let script = "i=0; while [ $i -lt 4000 ]; do echo 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; echo 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy' >&2; i=$((i+1)); done"

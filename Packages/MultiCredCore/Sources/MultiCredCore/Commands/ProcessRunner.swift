@@ -34,12 +34,10 @@ public final class ProcessRunner: CommandRunner {
 
                 let readers = DispatchGroup()
                 let output = OutputBuffers()
-                DispatchQueue.global().async(group: readers) {
-                    output.setStdout(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-                }
-                DispatchQueue.global().async(group: readers) {
-                    output.setStderr(stderrPipe.fileHandleForReading.readDataToEndOfFile())
-                }
+                // Entered before launch so a fast exit cannot notify before the
+                // readers exist; left by the readers once they start.
+                readers.enter()
+                readers.enter()
 
                 process.terminationHandler = { finished in
                     let code = finished.terminationStatus
@@ -52,13 +50,26 @@ public final class ProcessRunner: CommandRunner {
                 do {
                     try process.run()
                 } catch {
+                    // Readers were never started: nothing would ever close the pipes.
                     state.finish(.failure(CommandError.launchFailed(executable: name, reason: error.localizedDescription)))
                     return
                 }
 
+                DispatchQueue.global().async {
+                    output.setStdout(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                    readers.leave()
+                }
+                DispatchQueue.global().async {
+                    output.setStderr(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+                    readers.leave()
+                }
+
                 if let stdinPipe, let input = request.standardInput {
+                    let handle = stdinPipe.fileHandleForWriting
+                    // A child that exits without reading stdin must produce EPIPE,
+                    // not a SIGPIPE that terminates the app.
+                    _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
                     DispatchQueue.global().async {
-                        let handle = stdinPipe.fileHandleForWriting
                         try? handle.write(contentsOf: input)
                         try? handle.close()
                     }

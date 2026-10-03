@@ -86,13 +86,15 @@ public actor ToolLocator {
         return result.stdout.split(whereSeparator: \.isNewline).first.map(String.init)
     }
 
-    /// PATH as seen by the user's login shell. Empty when the shell fails or hangs;
-    /// the well-known directories still work in that case.
+    /// PATH as seen by a new terminal: login + interactive, so `.zshrc`/`.bashrc`
+    /// (where nvm, npm globals and friends usually live) are read too. stdin is
+    /// /dev/null and the call has a timeout, so a prompting rc file cannot hang us.
+    /// Empty when the shell fails or hangs; well-known directories still work then.
     public func userLoginShellPATH() async -> [String] {
         if let loginShellPATH { return loginShellPATH }
         let request = CommandRequest(
             executable: URL(fileURLWithPath: environment.loginShell),
-            arguments: ["-l", "-c", "printf '\(Self.pathMarker)%s\(Self.pathMarker)' \"$PATH\""],
+            arguments: ["-l", "-i", "-c", "printf '\(Self.pathMarker)%s\(Self.pathMarker)' \"$PATH\""],
             environment: [
                 "HOME": environment.home.path,
                 "USER": environment.userName,

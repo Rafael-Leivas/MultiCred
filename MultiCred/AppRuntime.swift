@@ -12,7 +12,9 @@ enum AppRuntime {
 
     static func makeEnvironment() -> SystemEnvironment {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: realSystemArgument) {
+        // Launch arguments only, never persisted defaults: a forgotten
+        // `defaults write` must not silently switch a debug build to the real system.
+        if launchArgumentIsYes(realSystemArgument) {
             return RealEnvironment.make()
         }
         let sandbox = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
@@ -21,5 +23,11 @@ enum AppRuntime {
         #else
         return RealEnvironment.make()
         #endif
+    }
+
+    private static func launchArgumentIsYes(_ name: String) -> Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-" + name), index + 1 < arguments.count else { return false }
+        return ["YES", "yes", "1", "true"].contains(arguments[index + 1])
     }
 }

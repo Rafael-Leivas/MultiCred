@@ -21,16 +21,19 @@ public struct SecItemKeychainStore: KeychainStore {
         try KeychainConstants.validate(account: account)
         guard !value.isEmpty else { throw KeychainError.emptySecret }
 
-        // Replace instead of update so the access list is always the current one.
-        try deleteItem(account: account)
-
         var attributes = baseQuery(account: account)
         attributes[kSecValueData as String] = value
         attributes[kSecAttrLabel as String] = "MultiCred API key"
         if let access = try makeAccess() {
             attributes[kSecAttrAccess as String] = access
         }
-        try check(SecItemAdd(attributes as CFDictionary, nil))
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        guard status == errSecDuplicateItem else { return try check(status) }
+
+        // Update in place: a failed write must never lose the previous value.
+        // The access list set when the item was first added is kept.
+        let update = [kSecValueData as String: value] as CFDictionary
+        try check(SecItemUpdate(baseQuery(account: account) as CFDictionary, update))
     }
 
     public func containsItem(account: String) throws -> Bool {
