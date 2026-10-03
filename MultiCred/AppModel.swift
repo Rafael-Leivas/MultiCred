@@ -168,16 +168,24 @@ final class AppModel {
     }
 
     func addAPIKey(nickname: String, provider: APIProvider, envVar: String, secret: String, color: ProfileColor) -> APIKeyAccount? {
-        var created: APIKeyAccount?
-        edit { config in
+        do {
             let (updated, key) = try ConfigEditor.addAPIKey(
                 nickname: nickname, provider: provider, envVar: envVar, secret: secret,
                 color: color, to: config, keychain: environment.keychain
             )
-            created = key
-            return updated
+            do {
+                try repository.save(updated)
+            } catch {
+                // Never leave a secret in the Keychain that no configuration points to.
+                try? environment.keychain.deleteItem(account: key.keychainAccount)
+                throw error
+            }
+            config = updated
+            return key
+        } catch {
+            lastError = UserMessages.describe(error)
+            return nil
         }
-        return created
     }
 
     func replaceSecret(of key: APIKeyAccount, with secret: String) -> Bool {

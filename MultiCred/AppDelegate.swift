@@ -90,6 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hosting.frame.size = hosting.fittingSize
         header.view = hosting
         menu.addItem(header)
+        // Plain item as well: SwiftUI buttons inside menu views do not always get the click.
+        if case .problems = model.consistency {
+            let fix = action("Corrigir…", #selector(openVerify), key: "", symbol: "exclamationmark.triangle")
+            menu.addItem(fix)
+        }
         menu.addItem(.separator())
 
         menu.addItem(NSMenuItem.sectionHeader(title: "Perfis"))

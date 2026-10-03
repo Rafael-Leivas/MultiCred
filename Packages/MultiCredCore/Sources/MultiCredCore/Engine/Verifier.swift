@@ -211,7 +211,8 @@ public struct Verifier: Sendable {
             executable: git,
             arguments: ["config", "--includes", "--show-origin", "--get", key],
             environment: env,
-            currentDirectory: environment.home,
+            // Not inside any repository (some people version their home folder).
+            currentDirectory: URL(fileURLWithPath: "/"),
             timeout: .seconds(10)
         ))
         guard let result, result.succeeded else { return (nil, nil) }
