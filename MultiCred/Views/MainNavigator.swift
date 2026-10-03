@@ -21,6 +21,7 @@ enum Route: Hashable {
     case editGitHub(UUID?)
     case githubLogin(String)
     case addClaude
+    case claudeAccount(UUID)
     case claudeLogin(UUID)
     case editAPIKey(UUID?)
     case uninstall

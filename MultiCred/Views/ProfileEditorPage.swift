@@ -32,6 +32,12 @@ struct ProfileEditorPage: View {
                            options: model.config.githubAccounts.map { ($0.id, "\($0.username) · \($0.host)", $0.color) })
                     picker("Claude", symbol: "sparkle", selection: $draft.claudeAccountId,
                            options: model.config.claudeAccounts.map { ($0.id, "\($0.nickname)\($0.email.map { " · \($0)" } ?? "")", $0.color) })
+                    if draft.claudeAccountId == nil {
+                        Label("Sem conta Claude, este perfil não troca o Claude: ele continua em \(model.appliedClaudeAccount?.nickname ?? "na conta atual").",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     ForEach(providers, id: \.self) { provider in
                         picker(provider.displayName, symbol: "key", selection: keyBinding(provider),
                                options: model.config.apiKeys.filter { $0.provider == provider }.map { ($0.id, "\($0.nickname) · \($0.envVar)", $0.color) })

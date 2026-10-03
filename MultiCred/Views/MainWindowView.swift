@@ -111,6 +111,7 @@ struct MainWindowView: View {
                 ContentUnavailableView("Login encerrado", systemImage: "xmark.circle")
             }
         case .addClaude: AddClaudeAccountPage(model: model, navigator: navigator)
+        case let .claudeAccount(id): ClaudeAccountDetailPage(model: model, navigator: navigator, accountId: id)
         case let .claudeLogin(id):
             if let session = navigator.claudeSessions[id] {
                 LoginPage(session: session, model: model, navigator: navigator)

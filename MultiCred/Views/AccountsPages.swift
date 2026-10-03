@@ -469,7 +469,9 @@ struct ClaudeAccountsPage: View {
                             }
                         }
                     }
+                    .onTapGesture { navigator.push(.claudeAccount(account.id)) }
                     .contextMenu {
+                        Button("Ver pasta e conversas") { navigator.push(.claudeAccount(account.id)) }
                         Button("Entrar…") { navigator.showClaudeLogin(account) }
                         Button("Sair da conta…") { pendingLogout = account }
                         Divider()
@@ -478,7 +480,7 @@ struct ClaudeAccountsPage: View {
                 }
                 .listStyle(.inset)
             }
-            InfoNote(text: "O login acontece no navegador, pelo próprio Claude Code. O MultiCred só aponta CLAUDE_CONFIG_DIR para a pasta certa e não lê nem copia tokens. Clique com o botão direito numa conta para entrar, sair ou remover.")
+            InfoNote(text: "O login acontece no navegador, pelo próprio Claude Code. O MultiCred só aponta CLAUDE_CONFIG_DIR para a pasta certa e não lê nem copia tokens. Clique numa conta para ver a pasta e as conversas dela.")
                 .padding(20)
         }
         .navigationTitle("Claude")
@@ -495,15 +497,15 @@ struct ClaudeAccountsPage: View {
                 + "A pasta e o login continuam no seu Mac. Para apagar o login, use \"Sair da conta\" antes.")
         }
         .confirmationDialog(
-            "Sair da conta \(pendingLogout?.nickname ?? "")?",
+            pendingLogout.map(logoutTitle) ?? "",
             isPresented: Binding(get: { pendingLogout != nil }, set: { if !$0 { pendingLogout = nil } }),
             presenting: pendingLogout
         ) { account in
-            Button("Sair da conta") {
+            Button("Sair da conta", role: account.isDefault ? .destructive : nil) {
                 Task { if let error = await model.logoutClaudeAccount(account.id) { model.lastError = error } }
             }
-        } message: { _ in
-            Text("O Claude Code apaga o login desta conta (só desta pasta). Para usá-la de novo, será preciso entrar outra vez.")
+        } message: { account in
+            Text(logoutMessage(account))
         }
     }
 }
@@ -512,53 +514,106 @@ struct AddClaudeAccountPage: View {
     let model: AppModel
     let navigator: MainNavigator
 
-    private enum FolderMode: Hashable { case new, existing, standard }
+    private enum FolderMode: Hashable { case new, existing }
 
     @State private var nickname = ""
     @State private var color: ProfileColor = .teal
     @State private var mode: FolderMode = .new
-    @State private var existingPath = ""
+    /// Selected existing folder: `.some(nil)` is the default `~/.claude`.
+    @State private var selected: String??
+    @State private var manualPath = ""
+    @State private var summaries = ClaudeFolderSummaries()
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Apelido", text: $nickname, prompt: Text("Cliente X"))
+                    TextField("Apelido", text: $nickname, prompt: Text("Trabalho"))
                     LabeledContent("Cor") { ColorChooser(selection: $color) }
                 }
                 Section("Pasta de configuração") {
                     Picker("Pasta", selection: $mode) {
                         Text("Nova pasta: \(suggestedPath)").tag(FolderMode.new)
-                        Text("Pasta que já existe").tag(FolderMode.existing)
-                        if !hasDefaultAccount, model.claudeLoginMode != .realInSandbox {
-                            Text("~/.claude (conta padrão)").tag(FolderMode.standard)
-                        }
+                        Text("Pasta que já existe (com as conversas dela)").tag(FolderMode.existing)
                     }
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
-                    if mode == .existing {
+                }
+                if mode == .existing {
+                    Section {
+                        if availableFolders.isEmpty {
+                            Text("Nenhuma pasta ~/.claude* livre encontrada. Escolha uma abaixo.").foregroundStyle(.secondary)
+                        }
+                        ForEach(availableFolders, id: \.self) { folder in
+                            folderCard(folder)
+                        }
                         HStack {
-                            TextField("Caminho", text: $existingPath, prompt: Text("~/.claude-pessoal"))
+                            TextField("Outra pasta", text: $manualPath, prompt: Text("~/minha-pasta-claude"))
+                                .onChange(of: manualPath) { if !manualPath.isEmpty { selected = nil } }
                             Button("Escolher…", action: choose)
                         }
+                    } header: {
+                        Text("Pastas encontradas")
+                    } footer: {
+                        Text("Use as conversas recentes para reconhecer cada conta. Pastas já usadas por outra conta não aparecem.")
                     }
                 }
             }
             .formStyle(.grouped)
             HStack {
-                Text("Depois de adicionar, o login dessa conta abre aqui mesmo.").font(.caption).foregroundStyle(.secondary)
+                Text(footerText).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Voltar") { navigator.back() }.keyboardShortcut(.cancelAction)
-                Button("Adicionar e entrar", action: add)
+                Button(mode == .new ? "Adicionar e entrar" : "Adicionar", action: add)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty || (mode == .existing && existingPath.isEmpty))
+                    .disabled(nickname.trimmingCharacters(in: .whitespaces).isEmpty || (mode == .existing && selected == nil && manualPath.isEmpty))
             }
             .padding(20)
         }
         .navigationTitle("Adicionar conta Claude")
+        .task { await summaries.discover(environment: model.environment) }
     }
 
-    private var hasDefaultAccount: Bool { model.config.claudeAccounts.contains { $0.isDefault } }
+    private var footerText: String {
+        mode == .new ? "Depois de adicionar, o login dessa conta abre aqui mesmo." : "Se a pasta não tiver login, o login abre em seguida."
+    }
+
+    /// Discovered folders no account uses yet. The default folder is hidden in
+    /// "real login in test mode" (it shares the keychain item with the real ~/.claude).
+    private var availableFolders: [String?] {
+        summaries.discovered.filter { folder in
+            !model.config.claudeAccounts.contains { $0.configDir == folder }
+                && !(folder == nil && model.claudeLoginMode == .realInSandbox)
+        }
+    }
+
+    private func folderCard(_ folder: String?) -> some View {
+        let isSelected = selected == .some(folder) && manualPath.isEmpty
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                Text(folder.map(model.environment.abbreviate) ?? "~/.claude (pasta padrão)")
+                    .font(.callout.monospaced().weight(.semibold))
+                Spacer()
+            }
+            if let summary = summaries.summary(for: folder, environment: model.environment) {
+                ClaudeFolderPreview(summary: summary, maxConversations: 3)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.1), lineWidth: isSelected ? 2 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selected = .some(folder)
+            manualPath = ""
+            if nickname.isEmpty, let folder {
+                nickname = URL(fileURLWithPath: folder).lastPathComponent.replacingOccurrences(of: ".claude-", with: "").capitalized
+            }
+        }
+    }
 
     private var suggestedPath: String {
         model.environment.abbreviate(ClaudePaths.suggestedConfigDir(nickname: nickname.isEmpty ? "conta" : nickname, environment: model.environment))
@@ -570,17 +625,33 @@ struct AddClaudeAccountPage: View {
         panel.canChooseFiles = false
         panel.showsHiddenFiles = true
         panel.directoryURL = model.environment.home
-        if panel.runModal() == .OK, let url = panel.url { existingPath = url.path }
+        if panel.runModal() == .OK, let url = panel.url {
+            manualPath = url.path
+            selected = nil
+        }
     }
 
     private func add() {
-        let folder: ClaudeFolderChoice = switch mode {
-        case .new: .new(ClaudePaths.suggestedConfigDir(nickname: nickname, environment: model.environment))
-        case .existing: .existing(existingPath)
-        case .standard: .defaultFolder
+        let folder: ClaudeFolderChoice
+        if mode == .new {
+            folder = .new(ClaudePaths.suggestedConfigDir(nickname: nickname, environment: model.environment))
+        } else if !manualPath.isEmpty {
+            folder = .existing(manualPath)
+        } else if case let .some(choice) = selected {
+            folder = choice.map(ClaudeFolderChoice.existing) ?? .defaultFolder
+        } else {
+            return
         }
         guard let account = model.addClaudeAccount(nickname: nickname, color: color, folder: folder) else { return }
-        navigator.showClaudeLogin(account, replacingTop: true)
+        // A folder that is already logged in only needs to be shown; otherwise log in.
+        let summary = ClaudeFolderInspector.summarize(configDir: account.configDir, environment: model.environment, limit: 0)
+        if mode == .existing, summary.email != nil {
+            navigator.path.removeLast()
+            navigator.push(.claudeAccount(account.id))
+            Task { await model.refreshClaudeStatus(account.id) }
+        } else {
+            navigator.showClaudeLogin(account, replacingTop: true)
+        }
     }
 }
 
