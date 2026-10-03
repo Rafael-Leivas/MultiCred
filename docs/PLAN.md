@@ -515,7 +515,7 @@ Progresso:
 - [x] Passo 3 /plan-eng-review
 - [x] Passo 4 /plan-design-review
 - [x] Aprovação do plano (2026-10-02, "pode seguir")
-- [ ] Fase 1 · [ ] Fase 2 · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
+- [~] Fase 1 (fundação pronta: commits a68d98f, 72969d2; 45 testes; spike aguardando autorização) · [ ] Fase 2 · [ ] Fase 3 · [ ] Fase 4 · [ ] Fase 5 · [ ] Fase 6 · [ ] /cso · [ ] /document-release
 
 ### Sequência da Fase 1 (o que o implementador precisa saber)
 - Hora 1: criar pacote `MultiCredCore` (swift-tools 6.0, macOS 14) e o `.xcodeproj` com pastas
