@@ -18,6 +18,8 @@ final class ArchitectureGuardTests: XCTestCase {
     private static let allowed: [String: Set<String>] = [
         "Environment/RealEnvironment.swift": ["NSHomeDirectory", "getpwuid", "NSUserName"],
         "Commands/ProcessRunner.swift": ["Process()"],
+        // Callers inject executable, arguments and the full environment.
+        "Commands/PseudoTerminalProcess.swift": ["Process()"],
         "Adapters/Launchctl.swift": ["/bin/launchctl"],
     ]
 

@@ -38,6 +38,13 @@ final class LoginOutputParserTests: XCTestCase {
         XCTAssertEqual(events, [.promptingForCode, .failed("Error: Invalid code or expired")])
     }
 
+    /// Regression: the URL host "example.invalid" was read as a failure.
+    func testFailureWordsInsideURLsAreIgnored() {
+        var parser = LoginOutputParser()
+        let events = parser.consume(Array("If the browser didn't open, visit: https://example.invalid/auth?error_uri=x&denied=0\r\n".utf8))
+        XCTAssertEqual(events, [.authorizationURL(URL(string: "https://example.invalid/auth?error_uri=x&denied=0")!)])
+    }
+
     func testStripEscapes() {
         XCTAssertEqual(LoginOutputParser.stripEscapes("\u{1B}[1;32mok\u{1B}[0m \u{1B}]0;title\u{1B}\\done\u{07}"), "ok done")
     }

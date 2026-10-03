@@ -61,9 +61,12 @@ public struct LoginOutputParser: Sendable {
             once("url", .authorizationURL(url))
         }
         if lower.contains("paste code") { once("prompt", .promptingForCode) }
+        // Failure words are looked for outside URLs: an authorization URL can
+        // contain "error", "invalid" or "denied" in its host or parameters.
+        let withoutURLs = lower.replacingOccurrences(of: #"https?://\S+"#, with: "", options: .regularExpression)
         if lower.contains("login successful") || lower.contains("logged in as") {
             once("success", .succeeded)
-        } else if !partial, ["error", "invalid", "expired", "failed", "denied"].contains(where: lower.contains) {
+        } else if !partial, ["error", "invalid", "expired", "failed", "denied"].contains(where: withoutURLs.contains) {
             once("failed:\(line)", .failed(line))
         }
         return events
