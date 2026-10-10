@@ -237,6 +237,18 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertNil(ClaudeFolder.override(for: marco.id, profile: config.profiles[1]), "the profile default needs no override")
     }
 
+    func testReapplyDropsAnOverrideForARemovedAccount() async throws {
+        let engine = engine()
+        _ = try await engine.switchProfile(personal.id, in: config)
+        _ = try await engine.switchClaudeOnly(to: marco.id, in: config)
+        config.claudeAccounts = []  // e.g. removed by the v1 → v2 migration
+
+        let result = try await engine.reapplyActiveProfile(in: config)
+        XCTAssertEqual(result?.state.profileId, personal.id)
+        XCTAssertNil(result?.state.claudeOverrideId)
+        XCTAssertNil(result?.state.appliedClaudeAccountId)
+    }
+
     func testMissingTokenIsAPreflightFailure() async throws {
         try keychain.deleteItem(account: marco.keychainAccount)
         _ = try await engine().switchProfile(personal.id, in: config)

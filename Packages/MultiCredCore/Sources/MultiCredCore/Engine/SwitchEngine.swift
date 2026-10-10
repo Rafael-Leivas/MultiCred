@@ -96,7 +96,12 @@ public actor SwitchEngine {
         case let .claudeOnly(accountId):
             (profileId, override, touchesGitAndGitHub) = (previous.profileId, accountId, false)
         case .reapply:
-            (profileId, override, touchesGitAndGitHub) = (previous.profileId, previous.claudeOverrideId, true)
+            // An override for an account that no longer exists (e.g. a v1
+            // folder account removed by the migration) is dropped, not fatal.
+            let kept = previous.claudeOverrideId.flatMap { id in
+                id == ClaudeFolder.ownLoginOverride || config.claudeAccount(id) != nil ? id : nil
+            }
+            (profileId, override, touchesGitAndGitHub) = (previous.profileId, kept, true)
         }
 
         let profile = config.profile(profileId)
