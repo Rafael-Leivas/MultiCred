@@ -21,8 +21,12 @@ public enum ValidationIssue: Hashable, Sendable {
 public enum Validation {
     static let reservedEnvVars: Set<String> = [
         "PATH", "HOME", "SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "TERM",
-        "CLAUDE_CONFIG_DIR", "GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN",
+        "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN",
     ]
+
+    static func isCanonicalDirectory(_ dir: String) -> Bool {
+        dir.hasPrefix("/") && ClaudePaths.standardize(dir) == dir && !hasControlCharacters(dir)
+    }
 
     static func hasControlCharacters(_ value: String) -> Bool {
         value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
@@ -83,16 +87,18 @@ public enum Validation {
             if !isValidHost(account.host) { issues.append(.invalidHost(owner: account.id)) }
         }
 
-        var claudeDirectories = Set<String?>()
+        var folderAccountDirectories = Set<String?>()
         for account in config.claudeAccounts {
             text(account.nickname, owner: account.id, field: "nickname")
-            if let dir = account.configDir {
-                let canonical = ClaudePaths.standardize(dir)
-                if !dir.hasPrefix("/") || canonical != dir || hasControlCharacters(dir) {
-                    issues.append(.invalidClaudeDirectory(owner: account.id))
-                }
+            if let email = account.email, !email.isEmpty, !isPlausibleEmail(email) {
+                issues.append(.invalidEmail(owner: account.id))
             }
-            if !claudeDirectories.insert(account.configDir).inserted {
+            // Folder accounts only exist before migration (config v1).
+            guard account.kind == .folder else { continue }
+            if let dir = account.configDir, !isCanonicalDirectory(dir) {
+                issues.append(.invalidClaudeDirectory(owner: account.id))
+            }
+            if !folderAccountDirectories.insert(account.configDir).inserted {
                 issues.append(.duplicateClaudeDirectory(owner: account.id))
             }
         }
@@ -116,6 +122,9 @@ public enum Validation {
             }
             if let id = profile.claudeAccountId, config.claudeAccount(id) == nil {
                 issues.append(.missingReference(profile: profile.id, field: "claude"))
+            }
+            if let dir = profile.claudeConfigDir, !isCanonicalDirectory(dir) {
+                issues.append(.invalidClaudeDirectory(owner: profile.id))
             }
             var seenVars = Set<String>()
             for keyID in profile.apiKeyIds {

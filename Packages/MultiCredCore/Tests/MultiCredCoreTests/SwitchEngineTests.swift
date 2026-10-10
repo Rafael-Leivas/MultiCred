@@ -84,23 +84,28 @@ final class SwitchEngineTests: SafeTestCase {
         let gitPersonal = GitIdentity(nickname: "Pessoal", name: "Rafael B. Leivas", email: "r@gmail.com", sshKeyPath: "~/.ssh/id_pessoal", color: .orange)
         let ghWork = GitHubAccount(nickname: "NPU", username: "rafael-npu", color: .indigo)
         let ghPersonal = GitHubAccount(nickname: "Pessoal", username: "rafaelbleivas", color: .orange)
-        let claudeWork = ClaudeAccount(nickname: "NPU", color: .indigo, configDir: nil)
-        let claudePersonal = ClaudeAccount(nickname: "Pessoal", color: .orange, configDir: claudePersonalDir)
+        // A credential-only Claude account (token), as for "use Marco's account".
+        let marco = ClaudeAccount(nickname: "Marco", email: "marco@x.com", color: .teal)
         let openAI = APIKeyAccount(nickname: "NPU", provider: .openai, color: .indigo)
         let gemini = APIKeyAccount(nickname: "Pessoal", provider: .gemini, color: .orange)
         try keychain.setSecret(Data("sk".utf8), account: openAI.keychainAccount)
         try keychain.setSecret(Data("g".utf8), account: gemini.keychainAccount)
+        try keychain.setSecret(Data("sk-ant-oat01-marco".utf8), account: marco.keychainAccount)
 
-        work = Profile(name: "Trabalho NPU", color: .indigo, gitIdentityId: gitWork.id, githubAccountId: ghWork.id, claudeAccountId: claudeWork.id, apiKeyIds: [openAI.id])
-        personal = Profile(name: "Pessoal", color: .orange, gitIdentityId: gitPersonal.id, githubAccountId: ghPersonal.id, claudeAccountId: claudePersonal.id, apiKeyIds: [gemini.id])
+        // Work uses ~/.claude (default); Personal uses its own folder. Both log in
+        // with the folder's own login.
+        work = Profile(name: "Trabalho NPU", color: .indigo, gitIdentityId: gitWork.id, githubAccountId: ghWork.id, claudeConfigDir: nil, apiKeyIds: [openAI.id])
+        personal = Profile(name: "Pessoal", color: .orange, gitIdentityId: gitPersonal.id, githubAccountId: ghPersonal.id, claudeConfigDir: claudePersonalDir, apiKeyIds: [gemini.id])
         config = Config(
             gitIdentities: [gitWork, gitPersonal],
             githubAccounts: [ghWork, ghPersonal],
-            claudeAccounts: [claudeWork, claudePersonal],
+            claudeAccounts: [marco],
             apiKeys: [openAI, gemini],
             profiles: [work, personal]
         )
     }
+
+    private var marco: ClaudeAccount { config.claudeAccounts[0] }
 
     private func engine(tools: FakeTools = FakeTools()) -> SwitchEngine {
         SwitchEngine(environment: environment, tools: tools)
@@ -134,7 +139,7 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertTrue(gitconfig.contains("sshCommand = \"ssh -i '\(home.path)/.ssh/id_pessoal' -o IdentitiesOnly=yes\""))
 
         let envSh = try read(paths.envSh)
-        XCTAssertTrue(envSh.contains("unset GEMINI_API_KEY OPENAI_API_KEY"))
+        XCTAssertTrue(envSh.contains("unset CLAUDE_CODE_OAUTH_TOKEN GEMINI_API_KEY OPENAI_API_KEY"))
         XCTAssertTrue(envSh.contains("export CLAUDE_CONFIG_DIR='\(claudePersonalDir!)'"))
         XCTAssertTrue(envSh.contains("GEMINI_API_KEY=\"$("))
         XCTAssertFalse(envSh.contains("OPENAI_API_KEY=\"$("))
@@ -159,53 +164,74 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertFalse(mutatingCommands().contains { $0.hasPrefix("auth switch") })
     }
 
-    func testProfileWithoutGitHubOrClaudeTouchesNeither() async throws {
+    func testProfileWithoutGitHubStillAppliesItsClaudeFolder() async throws {
+        system.launchdClaude = claudePersonalDir
         var bare = Profile(name: "Só git", color: .green, gitIdentityId: config.gitIdentities[0].id)
         bare.apiKeyIds = []
         config.profiles.append(bare)
         let result = try await engine().switchProfile(bare.id, in: config)
-        XCTAssertEqual(result.appliedSteps, [.git, .envFiles, .state])
-        XCTAssertEqual(mutatingCommands(), [])
-        XCTAssertFalse(try read(paths.envSh).contains("CLAUDE_CONFIG_DIR"))
+        XCTAssertEqual(result.appliedSteps, [.git, .launchd, .envFiles, .state])
+        XCTAssertFalse(mutatingCommands().contains { $0.hasPrefix("auth switch") })
+        XCTAssertNil(system.launchdClaude, "the profile's folder (default ~/.claude) is applied")
+        XCTAssertTrue(try read(paths.envSh).contains("unset CLAUDE_CONFIG_DIR"))
     }
 
-    func testProfileWithoutClaudeKeepsTheLastAppliedAccount() async throws {
-        _ = try await engine().switchProfile(personal.id, in: config)
-        let bare = Profile(name: "Sem Claude", color: .green, gitIdentityId: config.gitIdentities[0].id)
-        config.profiles.append(bare)
-        let result = try await engine().switchProfile(bare.id, in: config)
-        XCTAssertEqual(result.claudeTarget, .directory(claudePersonalDir))
-        XCTAssertEqual(system.launchdClaude, claudePersonalDir)
-    }
-
-    func testClaudeOnlySwitchKeepsGitAndGitHubAndClearsOnNextProfileSwitch() async throws {
+    /// The user's case: personal profile, then "use Marco's account". Agents,
+    /// skills and chats (the folder) stay; only the credential changes.
+    func testClaudeOnlySwitchChangesTheTokenNotTheFolder() async throws {
         let engine = engine()
-        _ = try await engine.switchProfile(work.id, in: config)
+        _ = try await engine.switchProfile(personal.id, in: config)
         let gitBefore = try read(paths.gitconfig)
         let commandsBefore = runner.requests.count
 
-        let result = try await engine.switchClaudeOnly(to: config.claudeAccounts[1].id, in: config)
-        XCTAssertEqual(result.appliedSteps, [.launchd, .envFiles, .state])
-        XCTAssertEqual(result.state.profileId, work.id)
-        XCTAssertEqual(result.state.claudeOverrideId, config.claudeAccounts[1].id)
+        let result = try await engine.switchClaudeOnly(to: marco.id, in: config)
+        XCTAssertEqual(result.appliedSteps, [.envFiles, .state], "no launchd change: the folder stays")
+        XCTAssertEqual(result.state.profileId, personal.id)
+        XCTAssertEqual(result.state.claudeOverrideId, marco.id)
+        XCTAssertEqual(result.state.appliedClaudeAccountId, marco.id)
         XCTAssertEqual(system.launchdClaude, claudePersonalDir)
         XCTAssertEqual(try read(paths.gitconfig), gitBefore)
-        XCTAssertFalse(runner.requests.dropFirst(commandsBefore).contains { $0.executable.lastPathComponent == "gh" })
-        XCTAssertTrue(try read(paths.envSh).contains("OPENAI_API_KEY=\"$("), "API keys still follow the profile")
+        XCTAssertFalse(runner.requests.dropFirst(commandsBefore).contains { ["gh", "launchctl"].contains($0.executable.lastPathComponent) })
+
+        let envSh = try read(paths.envSh)
+        XCTAssertTrue(envSh.contains("export CLAUDE_CONFIG_DIR='\(claudePersonalDir!)'"), "same folder")
+        XCTAssertTrue(envSh.contains("CLAUDE_CODE_OAUTH_TOKEN=\"$('/usr/bin/security' find-generic-password -s 'app.multicred.apikey' -a '\(marco.keychainAccount)' -w"))
+        XCTAssertFalse(envSh.contains("sk-ant-oat01-marco"), "the token itself never goes into the file")
+        XCTAssertTrue(envSh.contains("GEMINI_API_KEY=\"$("), "API keys still follow the profile")
 
         let reapplied = try await engine.reapplyActiveProfile(in: config)
-        XCTAssertEqual(reapplied?.state.claudeOverrideId, config.claudeAccounts[1].id, "reapply at login keeps the override")
-        XCTAssertEqual(system.launchdClaude, claudePersonalDir)
+        XCTAssertEqual(reapplied?.state.claudeOverrideId, marco.id, "reapply at login keeps the account")
 
-        let next = try await engine.switchProfile(work.id, in: config)
-        XCTAssertNil(next.state.claudeOverrideId)
-        XCTAssertNil(system.launchdClaude)
+        // Back to the folder's own login; the token variable is unset.
+        let back = try await engine.switchClaudeOnly(to: nil, in: config)
+        XCTAssertNil(back.state.appliedClaudeAccountId)
+        XCTAssertFalse(try read(paths.envSh).contains("CLAUDE_CODE_OAUTH_TOKEN=\"$("))
+        XCTAssertTrue(try read(paths.envSh).contains("unset CLAUDE_CODE_OAUTH_TOKEN GEMINI_API_KEY OPENAI_API_KEY"))
+    }
+
+    func testProfileWithATokenAccountUsesItAndNextProfileClearsIt() async throws {
+        config.profiles[1].claudeAccountId = marco.id
+        let engine = engine()
+        let first = try await engine.switchProfile(config.profiles[1].id, in: config)
+        XCTAssertEqual(first.state.appliedClaudeAccountId, marco.id)
+        XCTAssertTrue(try read(paths.envSh).contains("CLAUDE_CODE_OAUTH_TOKEN=\"$("))
+
+        let second = try await engine.switchProfile(work.id, in: config)
+        XCTAssertNil(second.state.appliedClaudeAccountId)
+        XCTAssertFalse(try read(paths.envSh).contains("CLAUDE_CODE_OAUTH_TOKEN=\"$("))
+    }
+
+    func testMissingTokenIsAPreflightFailure() async throws {
+        try keychain.deleteItem(account: marco.keychainAccount)
+        _ = try await engine().switchProfile(personal.id, in: config)
+        let error = await switchError { try await self.engine().switchClaudeOnly(to: self.marco.id, in: self.config) }
+        XCTAssertEqual(error, .preflight(.claudeTokenMissing("Marco")))
     }
 
     func testGenerationIncreasesAndActivatedAtOnlyChangesOnProfileSwitch() async throws {
         let engine = engine()
         let first = try await engine.switchProfile(work.id, in: config)
-        let second = try await engine.switchClaudeOnly(to: config.claudeAccounts[1].id, in: config)
+        let second = try await engine.switchClaudeOnly(to: marco.id, in: config)
         XCTAssertEqual(first.state.generation, 1)
         XCTAssertEqual(second.state.generation, 2)
         XCTAssertEqual(second.state.activatedAt, first.state.activatedAt)

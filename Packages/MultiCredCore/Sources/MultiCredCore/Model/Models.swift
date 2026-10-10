@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// The eight profile colors from the design tokens (`perfis-design/tokens.json`).
@@ -63,25 +64,70 @@ public struct GitHubAccount: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+public enum ClaudeAccountKind: String, Codable, Sendable {
+    /// Config v2: a credential only. Its long-lived OAuth token (`claude
+    /// setup-token`) lives in the Keychain and is exported as
+    /// `CLAUDE_CODE_OAUTH_TOKEN`; the Claude folder (agents, skills, chats)
+    /// belongs to the profile and does not change.
+    case token
+    /// Config v1 only: an account was a whole `CLAUDE_CONFIG_DIR` folder.
+    /// Migrated into the profiles' folders on load (`ConfigMigration`).
+    case folder
+}
+
+/// A Claude account = who authenticates and pays. Not where the chats live.
 public struct ClaudeAccount: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var nickname: String
-    /// Last e-mail reported by Claude Code; display only.
+    /// E-mail of the account, typed by the user; display only.
     public var email: String?
     public var color: ProfileColor
-    /// Canonical absolute path (see `ClaudePaths`), or nil for the default
-    /// account (`~/.claude`, used when `CLAUDE_CONFIG_DIR` is not set).
+    public var kind: ClaudeAccountKind
+    /// Only for `.folder` (config v1) and for status checks of a folder's own
+    /// login: canonical absolute path, or nil for the default `~/.claude`.
     public var configDir: String?
 
-    public init(id: UUID = UUID(), nickname: String, email: String? = nil, color: ProfileColor, configDir: String?) {
+    public init(id: UUID = UUID(), nickname: String, email: String? = nil, color: ProfileColor, kind: ClaudeAccountKind = .token, configDir: String? = nil) {
         self.id = id
         self.nickname = nickname
         self.email = email
         self.color = color
+        self.kind = kind
         self.configDir = configDir
     }
 
+    /// Keychain account name of the token.
+    public var keychainAccount: String { id.uuidString }
+
     public var isDefault: Bool { configDir == nil }
+
+    enum CodingKeys: String, CodingKey { case id, nickname, email, color, kind, configDir }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        nickname = try container.decode(String.self, forKey: .nickname)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        color = try container.decode(ProfileColor.self, forKey: .color)
+        // Config v1 had no kind: every account was a folder.
+        kind = try container.decodeIfPresent(ClaudeAccountKind.self, forKey: .kind) ?? .folder
+        configDir = try container.decodeIfPresent(String.self, forKey: .configDir)
+    }
+}
+
+/// A Claude Code config folder (agents, skills, chats, settings) as used by a
+/// profile. nil path = the default `~/.claude` (with `CLAUDE_CONFIG_DIR` unset).
+public enum ClaudeFolder {
+    public static let tokenVariable = "CLAUDE_CODE_OAUTH_TOKEN"
+
+    /// A pseudo account to reuse status helpers for a folder's own login. Its id
+    /// is derived from the path, so status caches keep working across calls.
+    public static func ownLogin(_ configDir: String?) -> ClaudeAccount {
+        let digest = Array(SHA256.hash(data: Data("multicred-folder:\(configDir ?? "~/.claude")".utf8)))
+        let id = UUID(uuid: (digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+                             digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]))
+        return ClaudeAccount(id: id, nickname: "", color: .graphite, kind: .folder, configDir: configDir)
+    }
 }
 
 public enum APIProvider: String, Codable, CaseIterable, Sendable {
@@ -130,7 +176,10 @@ public struct APIKeyAccount: Codable, Hashable, Identifiable, Sendable {
     public var keychainAccount: String { id.uuidString }
 }
 
-/// A combination of accounts. A nil reference means "do not switch that item".
+/// A combination of accounts. A nil git/GitHub reference means "do not switch
+/// that item". Claude is split in two: the profile always owns a Claude folder
+/// (agents, skills, chats; nil = default `~/.claude`), and optionally a Claude
+/// account whose token is used instead of the folder's own login.
 public struct Profile: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -138,6 +187,9 @@ public struct Profile: Codable, Hashable, Identifiable, Sendable {
     public var icon: ProfileIcon
     public var gitIdentityId: UUID?
     public var githubAccountId: UUID?
+    /// Claude folder of this profile: canonical absolute path, nil = `~/.claude`.
+    public var claudeConfigDir: String?
+    /// Token account to authenticate with; nil = the folder's own login.
     public var claudeAccountId: UUID?
     public var apiKeyIds: [UUID]
 
@@ -148,6 +200,7 @@ public struct Profile: Codable, Hashable, Identifiable, Sendable {
         icon: ProfileIcon? = nil,
         gitIdentityId: UUID? = nil,
         githubAccountId: UUID? = nil,
+        claudeConfigDir: String? = nil,
         claudeAccountId: UUID? = nil,
         apiKeyIds: [UUID] = []
     ) {
@@ -157,6 +210,7 @@ public struct Profile: Codable, Hashable, Identifiable, Sendable {
         self.icon = icon ?? .letter(String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
         self.gitIdentityId = gitIdentityId
         self.githubAccountId = githubAccountId
+        self.claudeConfigDir = claudeConfigDir
         self.claudeAccountId = claudeAccountId
         self.apiKeyIds = apiKeyIds
     }
@@ -180,7 +234,8 @@ public struct Settings: Codable, Hashable, Sendable {
 
 /// Everything in `config.json`. No secrets.
 public struct Config: VersionedDocument, Hashable {
-    public static let currentVersion = 1
+    /// 2: Claude accounts are tokens; the Claude folder belongs to the profile.
+    public static let currentVersion = 2
 
     public var version: Int
     public var gitIdentities: [GitIdentity]
@@ -214,9 +269,33 @@ public struct Config: VersionedDocument, Hashable {
     public func claudeAccount(_ id: UUID?) -> ClaudeAccount? { id.flatMap { id in claudeAccounts.first { $0.id == id } } }
     public func apiKey(_ id: UUID) -> APIKeyAccount? { apiKeys.first { $0.id == id } }
 
-    /// Every variable MultiCred manages; all are unset before a profile's keys are exported.
+    /// Every variable MultiCred manages; all are unset before a profile's keys
+    /// are exported (the Claude token variable included).
     public var managedEnvVars: [String] {
-        Array(Set(apiKeys.map(\.envVar))).sorted()
+        Array(Set(apiKeys.map(\.envVar) + [ClaudeFolder.tokenVariable])).sorted()
+    }
+}
+
+/// Moves a config v1 (Claude account = folder) to v2 (folder on the profile,
+/// account = token). Each profile keeps the folder it used and authenticates
+/// with that folder's own login, so nothing changes for the user until a
+/// token account is added. Folder accounts disappear: they are now just folders.
+public enum ConfigMigration {
+    public static func migrate(_ config: Config) -> (Config, changed: Bool) {
+        guard config.version < Config.currentVersion || config.claudeAccounts.contains(where: { $0.kind == .folder }) else {
+            return (config, false)
+        }
+        var updated = config
+        for index in updated.profiles.indices {
+            guard let id = updated.profiles[index].claudeAccountId,
+                  let account = config.claudeAccount(id), account.kind == .folder
+            else { continue }
+            updated.profiles[index].claudeConfigDir = account.configDir
+            updated.profiles[index].claudeAccountId = nil
+        }
+        updated.claudeAccounts.removeAll { $0.kind == .folder }
+        updated.version = Config.currentVersion
+        return (updated, true)
     }
 }
 

@@ -19,6 +19,8 @@ public enum PreflightFailure: Error, Equatable, Sendable {
     case toolMissing(Tool)
     case claudeDirectoryMissing(String)
     case apiKeyMissing(nickname: String, envVar: String)
+    /// The Claude account has no token in the Keychain.
+    case claudeTokenMissing(String)
     case keychainUnavailable(String)
 }
 

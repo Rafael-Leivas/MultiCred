@@ -36,9 +36,9 @@ final class ValidationTests: XCTestCase {
     private func sampleConfig() -> Config {
         let git = GitIdentity(nickname: "NPU", name: "Rafael Leivas", email: "r@work.example", color: .indigo)
         let gh = GitHubAccount(nickname: "NPU", username: "rafael-npu", color: .indigo)
-        let claude = ClaudeAccount(nickname: "NPU", color: .indigo, configDir: nil)
+        let claude = ClaudeAccount(nickname: "NPU", email: "r@work.example", color: .indigo)
         let key = APIKeyAccount(nickname: "NPU", provider: .openai, color: .indigo)
-        let profile = Profile(name: "Trabalho", color: .indigo, gitIdentityId: git.id, githubAccountId: gh.id, claudeAccountId: claude.id, apiKeyIds: [key.id])
+        let profile = Profile(name: "Trabalho", color: .indigo, gitIdentityId: git.id, githubAccountId: gh.id, claudeConfigDir: "/Users/r/.claude-npu", claudeAccountId: claude.id, apiKeyIds: [key.id])
         return Config(gitIdentities: [git], githubAccounts: [gh], claudeAccounts: [claude], apiKeys: [key], profiles: [profile])
     }
 
@@ -72,11 +72,27 @@ final class ValidationTests: XCTestCase {
         XCTAssertTrue(Validation.issues(in: config).contains(.duplicateEnvVarInProfile(profile: config.profiles[0].id, name: "OPENAI_API_KEY")))
     }
 
-    func testClaudeDirectoriesMustBeCanonicalAndUnique() {
+    func testProfileClaudeFolderMustBeCanonical() {
         var config = sampleConfig()
-        let trailing = ClaudeAccount(nickname: "X", color: .teal, configDir: "/Users/x/.claude-x/")
-        let defaultAgain = ClaudeAccount(nickname: "Y", color: .teal, configDir: nil)
-        config.claudeAccounts += [trailing, defaultAgain]
+        config.profiles[0].claudeConfigDir = "/Users/x/.claude-x/"
+        XCTAssertTrue(Validation.issues(in: config).contains(.invalidClaudeDirectory(owner: config.profiles[0].id)))
+        config.profiles[0].claudeConfigDir = "relative/.claude"
+        XCTAssertTrue(Validation.issues(in: config).contains(.invalidClaudeDirectory(owner: config.profiles[0].id)))
+    }
+
+    func testTokenVariableIsReservedAndAlwaysManaged() {
+        var config = sampleConfig()
+        config.apiKeys[0].envVar = "CLAUDE_CODE_OAUTH_TOKEN"
+        XCTAssertTrue(Validation.issues(in: config).contains(.reservedEnvVar(owner: config.apiKeys[0].id, name: "CLAUDE_CODE_OAUTH_TOKEN")))
+        XCTAssertTrue(Config().managedEnvVars.contains("CLAUDE_CODE_OAUTH_TOKEN"))
+    }
+
+    func testV1FolderAccountsAreStillValidatedBeforeMigration() {
+        var config = sampleConfig()
+        let trailing = ClaudeAccount(nickname: "X", color: .teal, kind: .folder, configDir: "/Users/x/.claude-x/")
+        let defaultOne = ClaudeAccount(nickname: "Y", color: .teal, kind: .folder, configDir: nil)
+        let defaultAgain = ClaudeAccount(nickname: "Z", color: .teal, kind: .folder, configDir: nil)
+        config.claudeAccounts += [trailing, defaultOne, defaultAgain]
         let issues = Validation.issues(in: config)
         XCTAssertTrue(issues.contains(.invalidClaudeDirectory(owner: trailing.id)))
         XCTAssertTrue(issues.contains(.duplicateClaudeDirectory(owner: defaultAgain.id)))
@@ -114,6 +130,6 @@ final class ValidationTests: XCTestCase {
         var config = sampleConfig()
         config.apiKeys.append(APIKeyAccount(nickname: "G", provider: .gemini, color: .green))
         config.apiKeys.append(APIKeyAccount(nickname: "O2", provider: .openai, color: .green))
-        XCTAssertEqual(config.managedEnvVars, ["GEMINI_API_KEY", "OPENAI_API_KEY"])
+        XCTAssertEqual(config.managedEnvVars, ["CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "OPENAI_API_KEY"])
     }
 }

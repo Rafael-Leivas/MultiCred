@@ -144,8 +144,8 @@ final class SetupDetectorTests: SafeTestCase {
         XCTAssertEqual(initial, config.profiles[0].id)
         XCTAssertEqual(config.githubAccount(config.profiles[0].githubAccountId)?.username, "rafael-npu")
         XCTAssertEqual(config.githubAccounts.count, 2)
-        XCTAssertEqual(config.claudeAccounts.map(\.configDir), [nil, home.path + "/.claude-pessoal"])
-        XCTAssertEqual(config.claudeAccounts[1].email, "p@x.com")
+        XCTAssertNil(config.profiles[0].claudeConfigDir, "the main profile uses ~/.claude")
+        XCTAssertEqual(config.claudeAccounts, [], "token accounts are added by the user later")
     }
 
     func testLegacyProfilesWinAndActiveProfileIsKept() {
@@ -160,8 +160,8 @@ final class SetupDetectorTests: SafeTestCase {
         XCTAssertEqual(config.profiles.map(\.name), ["Trabalho", "Pessoal"])
         XCTAssertEqual(initial, config.profiles[1].id)
         XCTAssertEqual(config.githubAccount(config.profiles[1].githubAccountId)?.username, "rafael-l", "gh's spelling")
-        XCTAssertNil(config.claudeAccount(config.profiles[0].claudeAccountId)?.configDir)
-        XCTAssertEqual(config.claudeAccount(config.profiles[1].claudeAccountId)?.configDir, home.path + "/.claude-pessoal")
+        XCTAssertEqual(config.profiles.map(\.claudeConfigDir), [nil, home.path + "/.claude-pessoal"])
+        XCTAssertEqual(config.profiles.map(\.claudeAccountId), [nil, nil], "each profile starts with its folder's own login")
         XCTAssertEqual(Validation.issues(in: config), [])
     }
 }
@@ -175,11 +175,10 @@ final class VerifierTests: SafeTestCase {
         try super.setUpWithError()
         let git = GitIdentity(nickname: "N", name: "Rafael", email: "r@work.example", color: .indigo)
         let gh = GitHubAccount(nickname: "N", username: "rafael-npu", color: .indigo)
-        let claude = ClaudeAccount(nickname: "N", color: .indigo, configDir: nil)
         let key = APIKeyAccount(nickname: "N", provider: .openai, color: .indigo)
         try keychain.setSecret(Data("sk".utf8), account: key.keychainAccount)
-        profile = Profile(name: "Trabalho", color: .indigo, gitIdentityId: git.id, githubAccountId: gh.id, claudeAccountId: claude.id, apiKeyIds: [key.id])
-        config = Config(gitIdentities: [git], githubAccounts: [gh], claudeAccounts: [claude], apiKeys: [key], profiles: [profile])
+        profile = Profile(name: "Trabalho", color: .indigo, gitIdentityId: git.id, githubAccountId: gh.id, claudeConfigDir: nil, apiKeyIds: [key.id])
+        config = Config(gitIdentities: [git], githubAccounts: [gh], apiKeys: [key], profiles: [profile])
     }
 
     private func healthySystem() async throws -> ActiveState {
@@ -237,9 +236,27 @@ final class VerifierTests: SafeTestCase {
         XCTAssertEqual(item("shell.zsh")?.fix, .reinstallIntegration)
         XCTAssertEqual(item("legacy")?.fix, .removeLegacy)
         XCTAssertEqual(item("key.\(config.apiKeys[0].id)")?.fix, .setAPIKeySecret(config.apiKeys[0].id))
-        XCTAssertEqual(item("claude.login")?.fix, .loginClaude(config.claudeAccounts[0].id))
+        XCTAssertEqual(item("claude.login")?.fix, .loginClaudeFolder(nil))
         XCTAssertEqual(item("claude.sessions")?.status, .info)
         XCTAssertFalse(report.isConsistent)
+    }
+
+    func testTokenAccountIsCheckedInTheKeychain() async throws {
+        let marco = ClaudeAccount(nickname: "Marco", color: .teal)
+        config.claudeAccounts = [marco]
+        try keychain.setSecret(Data("sk-ant-oat01-x".utf8), account: marco.keychainAccount)
+        let state = try await healthySystem()
+        runner.on("git", ["config"], stdout: "file:\(paths.gitconfig.path)\tRafael\n")
+        let tokenState = try await SwitchEngine(environment: environment, tools: FakeTools()).switchClaudeOnly(to: marco.id, in: config).state
+
+        var item = await verify(tokenState, status: .loggedOut).items.first { $0.id == "claude.login" }
+        XCTAssertEqual(item?.status, .ok, "with a token account the folder's own login does not matter")
+        XCTAssertTrue(item?.detail?.contains("Marco") ?? false)
+
+        try keychain.deleteItem(account: marco.keychainAccount)
+        item = await verify(tokenState).items.first { $0.id == "claude.login" }
+        XCTAssertEqual(item?.fix, .loginClaude(marco.id))
+        _ = state
     }
 
     func testFixPreviewsNameTheCommand() {

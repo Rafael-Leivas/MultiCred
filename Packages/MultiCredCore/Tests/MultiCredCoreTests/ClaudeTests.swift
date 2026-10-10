@@ -184,46 +184,98 @@ final class ClaudeStatusTests: SafeTestCase {
 }
 
 final class ClaudeAccountEditorTests: SafeTestCase {
-    func testAddNewFolderCreatesItPrivately() throws {
-        let (config, account) = try ClaudeAccountEditor.add(
-            nickname: " Cliente X ", color: .teal, folder: .new("~/.claude-cliente-x/"), to: Config(), environment: environment
-        )
-        XCTAssertEqual(account.nickname, "Cliente X")
-        XCTAssertEqual(account.configDir, home.path + "/.claude-cliente-x")
-        XCTAssertEqual(config.claudeAccounts, [account])
+    private let token = "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789"
+
+    // MARK: Profile folders
+
+    func testNewFolderIsCreatedPrivatelyAndCanonical() throws {
+        let dir = try ClaudeAccountEditor.prepareFolder(.new("~/.claude-cliente-x/"), environment: environment)
+        XCTAssertEqual(dir, home.path + "/.claude-cliente-x")
         XCTAssertEqual(try mode(of: home.appendingPathComponent(".claude-cliente-x")), 0o700)
     }
 
-    func testDefaultFolderAndExplicitTildeClaudeAreTheSameAccount() throws {
-        let (config, first) = try ClaudeAccountEditor.add(nickname: "NPU", color: .indigo, folder: .defaultFolder, to: Config(), environment: environment)
-        XCTAssertNil(first.configDir)
-        XCTAssertThrowsError(try ClaudeAccountEditor.add(nickname: "Again", color: .indigo, folder: .existing("~/.claude"), to: config, environment: environment)) {
-            XCTAssertEqual($0 as? ClaudeAccountError, .folderAlreadyUsed(by: "NPU"))
-        }
+    func testDefaultFolderIsNilAndExplicitTildeClaudeToo() throws {
+        XCTAssertNil(try ClaudeAccountEditor.prepareFolder(.defaultFolder, environment: environment))
+        XCTAssertNil(try ClaudeAccountEditor.prepareFolder(.existing("~/.claude"), environment: environment))
     }
 
     func testExistingFolderMustExist() {
-        XCTAssertThrowsError(try ClaudeAccountEditor.add(nickname: "P", color: .orange, folder: .existing("~/.claude-missing"), to: Config(), environment: environment)) {
+        XCTAssertThrowsError(try ClaudeAccountEditor.prepareFolder(.existing("~/.claude-missing"), environment: environment)) {
             XCTAssertEqual($0 as? ClaudeAccountError, .folderMissing(self.home.path + "/.claude-missing"))
         }
     }
 
     func testTestModeRefusesFoldersOutsideTheSandbox() {
-        XCTAssertThrowsError(try ClaudeAccountEditor.add(nickname: "Real", color: .red, folder: .new("/tmp/should-not-be-created-\(UUID().uuidString)"), to: Config(), environment: environment)) {
+        XCTAssertThrowsError(try ClaudeAccountEditor.prepareFolder(.new("/tmp/should-not-be-created-\(UUID().uuidString)"), environment: environment)) {
             guard case .outsideSandbox = $0 as? ClaudeAccountError else { return XCTFail("\($0)") }
         }
     }
 
-    func testRemoveClearsProfileReferencesOnly() throws {
-        var (config, account) = try ClaudeAccountEditor.add(nickname: "X", color: .teal, folder: .new("~/.claude-x"), to: Config(), environment: environment)
-        let profile = Profile(name: "Cliente X", color: .teal, claudeAccountId: account.id)
-        config.profiles.append(profile)
-        XCTAssertEqual(ClaudeAccountEditor.profilesUsing(account.id, in: config).map(\.name), ["Cliente X"])
+    // MARK: Token accounts
 
-        let updated = ClaudeAccountEditor.remove(account.id, from: config)
+    func testTokenAccountKeepsTheTokenOnlyInTheKeychain() throws {
+        let (config, account) = try ClaudeAccountEditor.addTokenAccount(
+            nickname: " Marco ", email: "marco@x.com", color: .teal, token: "  \(token)\n", to: Config(), keychain: keychain
+        )
+        XCTAssertEqual(account.nickname, "Marco")
+        XCTAssertEqual(account.kind, .token)
+        XCTAssertEqual(keychain.storedValue(account: account.keychainAccount), Data(token.utf8))
+        let json = String(decoding: try JSONFileStore<Config>.encoder().encode(config), as: UTF8.self)
+        XCTAssertFalse(json.contains(token), "the token never reaches config.json")
+    }
+
+    func testInvalidTokenIsRejectedAndNothingStored() {
+        XCTAssertThrowsError(try ClaudeAccountEditor.addTokenAccount(nickname: "X", email: nil, color: .red, token: "not a token", to: Config(), keychain: keychain)) {
+            XCTAssertEqual($0 as? ClaudeAccountError, .invalidToken)
+        }
+        XCTAssertEqual(try keychain.allAccounts(), [])
+    }
+
+    func testRemoveDeletesTokenAndFallsBackToFolderLogin() throws {
+        var (config, account) = try ClaudeAccountEditor.addTokenAccount(nickname: "Marco", email: nil, color: .teal, token: token, to: Config(), keychain: keychain)
+        config.profiles.append(Profile(name: "Pessoal", color: .orange, claudeConfigDir: home.path + "/.claude-pessoal", claudeAccountId: account.id))
+        XCTAssertEqual(ClaudeAccountEditor.profilesUsing(account.id, in: config).map(\.name), ["Pessoal"])
+
+        let updated = ClaudeAccountEditor.remove(account.id, from: config, keychain: keychain)
         XCTAssertEqual(updated.claudeAccounts, [])
         XCTAssertNil(updated.profiles[0].claudeAccountId)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: home.path + "/.claude-x"), "folder and login are kept")
+        XCTAssertEqual(updated.profiles[0].claudeConfigDir, home.path + "/.claude-pessoal", "the profile keeps its folder")
+        XCTAssertNil(keychain.storedValue(account: account.keychainAccount))
+    }
+
+    func testSetupTokenOutputIsCapturedAndMasked() {
+        var parser = SetupTokenParser()
+        _ = parser.consume(Array("Opening browser to sign in…\r\nLogin successful.\r\nYour OAuth token (valid for 1 year):\r\n\r\n\u{1B}[1m\(token)\u{1B}[0m\r\n".utf8))
+        XCTAssertEqual(parser.token, token)
+        XCTAssertFalse(parser.maskedTranscript.contains(token))
+        XCTAssertTrue(parser.maskedTranscript.contains(Redactor.mask))
+    }
+
+    // MARK: Migration from config v1 (account = folder)
+
+    func testV1FolderAccountsBecomeProfileFolders() throws {
+        let v1 = #"""
+        {"version":1,"gitIdentities":[],"githubAccounts":[],"apiKeys":[],
+         "claudeAccounts":[
+          {"id":"11111111-1111-1111-1111-111111111111","nickname":"Pessoal","color":"orange","configDir":"\#(home.path)/.claude-pessoal"},
+          {"id":"22222222-2222-2222-2222-222222222222","nickname":"Trabalho","color":"indigo"}],
+         "profiles":[
+          {"id":"33333333-3333-3333-3333-333333333333","name":"Pessoal","color":"orange","icon":{"letter":{"_0":"P"}},"claudeAccountId":"11111111-1111-1111-1111-111111111111","apiKeyIds":[]},
+          {"id":"44444444-4444-4444-4444-444444444444","name":"Trabalho","color":"indigo","icon":{"letter":{"_0":"T"}},"claudeAccountId":"22222222-2222-2222-2222-222222222222","apiKeyIds":[]},
+          {"id":"55555555-5555-5555-5555-555555555555","name":"Sem","color":"red","icon":{"letter":{"_0":"S"}},"apiKeyIds":[]}],
+         "settings":{"switchFeedback":"hud","enabledShells":["zsh"],"openAtLogin":true}}
+        """#
+        let paths = AppPaths(environment: environment)
+        try FileManager.default.createDirectory(at: paths.root, withIntermediateDirectories: true)
+        try Data(v1.utf8).write(to: paths.config)
+
+        let config = try XCTUnwrap(try ConfigRepository(environment: environment).load())
+        XCTAssertEqual(config.version, 2)
+        XCTAssertEqual(config.claudeAccounts, [], "folder accounts are now just folders")
+        XCTAssertEqual(config.profiles.map(\.claudeConfigDir), [home.path + "/.claude-pessoal", nil, nil])
+        XCTAssertEqual(config.profiles.map(\.claudeAccountId), [nil, nil, nil])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.root.appendingPathComponent("config.json.v1").path), "v1 kept as a copy")
+        XCTAssertEqual(try ConfigRepository(environment: environment).load(), config, "saved migrated; second load is stable")
     }
 
     func testRepositoryRefusesInvalidConfig() throws {

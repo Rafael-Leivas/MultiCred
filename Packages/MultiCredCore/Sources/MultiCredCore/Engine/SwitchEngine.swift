@@ -103,28 +103,31 @@ public actor SwitchEngine {
         if profileId != nil, profile == nil { throw SwitchError.preflight(.profileNotFound) }
         if let override, config.claudeAccount(override) == nil { throw SwitchError.preflight(.claudeAccountNotFound) }
 
-        // Override wins, then the profile's account, then whatever was applied last
-        // (a profile without Claude does not switch Claude).
-        let claudeAccount = config.claudeAccount(override ?? profile?.claudeAccountId ?? previous.appliedClaudeAccountId)
-        let claudeTarget: ClaudeTarget = switch claudeAccount {
-        case nil: .unchanged
-        case let account?: account.configDir.map(ClaudeTarget.directory) ?? .defaultAccount
-        }
+        // The Claude folder (agents, skills, chats) belongs to the profile and only
+        // changes with the profile. The Claude account is just the credential:
+        // the override (switch only the Claude account) wins over the profile's
+        // choice, and no account means the folder's own login.
+        let claudeTarget: ClaudeTarget = profile.map { $0.claudeConfigDir.map(ClaudeTarget.directory) ?? .defaultAccount } ?? .unchanged
+        let tokenAccount = config.claudeAccount(override ?? profile?.claudeAccountId).flatMap { $0.kind == .token ? $0 : nil }
 
         let now = environment.clock()
         let newState = ActiveState(
             profileId: profileId,
             claudeOverrideId: override,
-            appliedClaudeAccountId: claudeAccount?.id,
+            appliedClaudeAccountId: tokenAccount?.id,
             activatedAt: operation.startsNewActivation ? now : (previous.activatedAt ?? now),
             generation: previous.generation + 1
         )
         let apiKeys = (profile?.apiKeyIds ?? []).compactMap(config.apiKey)
+        var exports = apiKeys.map { ShellEnvironment.APIKeyExport(envVar: $0.envVar, keychainAccount: $0.keychainAccount) }
+        if let tokenAccount {
+            exports.append(.init(envVar: ClaudeFolder.tokenVariable, keychainAccount: tokenAccount.keychainAccount))
+        }
         let shellEnvironment = ShellEnvironment(
             generation: newState.generation,
             managedVars: config.managedEnvVars,
             claude: claudeTarget,
-            apiKeys: apiKeys.map { .init(envVar: $0.envVar, keychainAccount: $0.keychainAccount) }
+            apiKeys: exports
         )
         let childEnvironment = environment.baseProcessEnvironment(path: await tools.searchDirectories())
 
@@ -153,6 +156,10 @@ public actor SwitchEngine {
             }
             guard present else { throw SwitchError.preflight(.apiKeyMissing(nickname: key.nickname, envVar: key.envVar)) }
         }
+        if let tokenAccount {
+            let present = (try? environment.keychain.containsItem(account: tokenAccount.keychainAccount)) ?? false
+            guard present else { throw SwitchError.preflight(.claudeTokenMissing(tokenAccount.nickname)) }
+        }
 
         // Steps.
         var steps: [SwitchStep] = []
@@ -162,13 +169,14 @@ public actor SwitchEngine {
         if let githubPlan {
             steps.append(githubStep(githubPlan.cli, account: githubPlan.account))
         }
-        if claudeTarget != .unchanged {
+        // Switching only the Claude account never moves the folder.
+        if touchesGitAndGitHub, claudeTarget != .unchanged {
             steps.append(launchdStep(claudeTarget, launchctl: Launchctl(runner: environment.runner, baseEnvironment: childEnvironment)))
         }
         steps.append(envFilesStep(shellEnvironment))
         steps.append(stateStep(newState))
 
-        log?.log(.info, "switch \(transaction): start profile=\(profile?.name ?? "-") claude=\(String(describing: claudeTarget)) steps=\(steps.map(\.kind.rawValue))")
+        log?.log(.info, "switch \(transaction): start profile=\(profile?.name ?? "-") folder=\(String(describing: claudeTarget)) account=\(tokenAccount?.nickname ?? "login da pasta") steps=\(steps.map(\.kind.rawValue))")
         var undoStack: [(SwitchStepKind, SwitchStep.Undo)] = []
         for step in steps {
             do {

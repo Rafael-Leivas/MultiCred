@@ -99,16 +99,8 @@ public struct SetupDetector: Sendable {
     public static func suggestedConfig(from setup: DetectedSetup, environment: SystemEnvironment) -> (Config, UUID?) {
         var config = Config()
         let palette: [ProfileColor] = [.indigo, .orange, .teal, .green, .blue, .pink, .red, .graphite]
-
-        func claudeAccount(for configDir: String?, nickname: String) -> UUID {
-            if let existing = config.claudeAccounts.first(where: { $0.configDir == configDir }) { return existing.id }
-            let folder = setup.claudeFolders.first { $0.configDir == configDir }
-            var email: String?
-            if case let .loggedIn(found)? = folder?.status { email = found }
-            let account = ClaudeAccount(nickname: nickname, email: email, color: palette[config.claudeAccounts.count % palette.count], configDir: configDir)
-            config.claudeAccounts.append(account)
-            return account.id
-        }
+        // Claude folders go on the profiles (config v2); Claude accounts (tokens)
+        // are added later by the user, so none are suggested here.
 
         func githubAccount(_ username: String, host: String = "github.com", nickname: String) -> UUID {
             if let existing = config.githubAccounts.first(where: { $0.username.caseInsensitiveCompare(username) == .orderedSame && $0.host == host }) {
@@ -131,8 +123,7 @@ public struct SetupDetector: Sendable {
                     gitId = identity.id
                 }
                 let ghId = legacy.githubUser.map { githubAccount($0, nickname: legacy.displayName) }
-                let claudeId = claudeAccount(for: legacy.claudeDir, nickname: legacy.displayName)
-                let profile = Profile(name: legacy.displayName, color: color, gitIdentityId: gitId, githubAccountId: ghId, claudeAccountId: claudeId)
+                let profile = Profile(name: legacy.displayName, color: color, gitIdentityId: gitId, githubAccountId: ghId, claudeConfigDir: legacy.claudeDir)
                 config.profiles.append(profile)
                 if legacy.key == setup.legacyActiveKey { initial = profile.id }
             }
@@ -145,18 +136,13 @@ public struct SetupDetector: Sendable {
             }
             let active = setup.githubLogins.first { $0.active }
             let ghId = active.map { githubAccount($0.login, host: $0.host, nickname: $0.login) }
-            let claudeId = setup.claudeFolders.contains { $0.configDir == nil } ? claudeAccount(for: nil, nickname: "Principal") : nil
-            let profile = Profile(name: "Principal", color: .indigo, gitIdentityId: gitId, githubAccountId: ghId, claudeAccountId: claudeId)
+            let profile = Profile(name: "Principal", color: .indigo, gitIdentityId: gitId, githubAccountId: ghId, claudeConfigDir: nil)
             config.profiles.append(profile)
             initial = profile.id
         }
 
-        // Everything else that exists becomes an account the user can pick later.
+        // Every gh login becomes an account the user can pick later.
         for login in setup.githubLogins { _ = githubAccount(login.login, host: login.host, nickname: login.login) }
-        for folder in setup.claudeFolders where !config.claudeAccounts.contains(where: { $0.configDir == folder.configDir }) {
-            let name = folder.configDir.map { URL(fileURLWithPath: $0).lastPathComponent.replacingOccurrences(of: ".claude-", with: "") } ?? "Padrão"
-            _ = claudeAccount(for: folder.configDir, nickname: name.prefix(1).uppercased() + name.dropFirst())
-        }
         return (config, initial ?? config.profiles.first?.id)
     }
 }

@@ -182,9 +182,8 @@ final class InstallerTests: RealToolTestCase {
         let claudeDir = home.appendingPathComponent(".claude-pessoal")
         try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
         let identity = GitIdentity(nickname: "P", name: "Pessoal", email: "p@example.com", color: .orange)
-        let claude = ClaudeAccount(nickname: "P", color: .orange, configDir: claudeDir.path)
-        let profile = Profile(name: "Pessoal", color: .orange, gitIdentityId: identity.id, claudeAccountId: claude.id)
-        let config = Config(gitIdentities: [identity], claudeAccounts: [claude], profiles: [profile])
+        let profile = Profile(name: "Pessoal", color: .orange, gitIdentityId: identity.id, claudeConfigDir: claudeDir.path)
+        let config = Config(gitIdentities: [identity], profiles: [profile])
         runner.on("launchctl", stdout: "")
         _ = try await SwitchEngine(environment: environment, tools: FakeTools()).switchProfile(profile.id, in: config)
 

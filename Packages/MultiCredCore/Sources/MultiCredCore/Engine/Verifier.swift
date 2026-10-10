@@ -7,7 +7,10 @@ public enum Fix: Equatable, Sendable {
     case reinstallIntegration
     case removeLegacy
     case switchGitHub(host: String, user: String)
+    /// Generate a new token for a Claude account.
     case loginClaude(UUID)
+    /// Log in the profile's Claude folder itself (no token account).
+    case loginClaudeFolder(String?)
     case loginGitHub(host: String)
     case setAPIKeySecret(UUID)
 }
@@ -112,26 +115,39 @@ public struct Verifier: Sendable {
             }
         }
 
-        // Tools: Claude Code.
-        if let account = config.claudeAccount(state.appliedClaudeAccountId) {
+        // Tools: Claude Code (folder from the profile, account = credential).
+        if let profile {
+            let folderName = profile.claudeConfigDir.map(environment.abbreviate) ?? "~/.claude (padrão)"
             let launchd = try? await Launchctl(runner: environment.runner, baseEnvironment: env).getenv(SwitchEngine.claudeVariable)
-            let ok = launchd == account.configDir
+            let ok = launchd == profile.claudeConfigDir
             items.append(CheckItem(
-                id: "claude.launchd", section: .tools, title: "Claude Code · conta para apps",
+                id: "claude.launchd", section: .tools, title: "Claude Code · pasta para apps",
                 status: ok ? .ok : .error,
                 detail: launchd.map(environment.abbreviate) ?? "~/.claude (padrão)",
-                expected: ok ? nil : (account.configDir.map(environment.abbreviate) ?? "~/.claude (padrão)"),
+                expected: ok ? nil : folderName,
                 origin: ok ? nil : "launchctl", fix: ok ? nil : .reapplyProfile
             ))
-            let status = await claudeStatus(account)
-            let email = account.email.map { " · \($0)" } ?? ""
-            items.append(CheckItem(
-                id: "claude.login", section: .tools, title: "Claude Code · conta",
-                status: status.isLoggedIn ? .ok : (status == .loggedOut ? .error : .warning),
-                detail: status.isLoggedIn ? "\(account.nickname)\(email)" : (status == .loggedOut ? "\(account.nickname) precisa entrar" : "status indisponível"),
-                expected: nil, origin: nil,
-                fix: status == .loggedOut ? .loginClaude(account.id) : nil
-            ))
+            if let account = config.claudeAccount(state.appliedClaudeAccountId) {
+                let present = (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
+                let email = account.email.map { " · \($0)" } ?? ""
+                items.append(CheckItem(
+                    id: "claude.login", section: .tools, title: "Claude Code · conta",
+                    status: present ? .ok : .error,
+                    detail: present ? "\(account.nickname)\(email) (token no Keychain), pasta \(folderName)" : "\(account.nickname): token não está no Keychain",
+                    expected: nil, origin: nil,
+                    fix: present ? nil : .loginClaude(account.id)
+                ))
+            } else {
+                let status = await claudeStatus(ClaudeFolder.ownLogin(profile.claudeConfigDir))
+                let email: String = if case let .loggedIn(found?) = status { " · \(found)" } else { "" }
+                items.append(CheckItem(
+                    id: "claude.login", section: .tools, title: "Claude Code · conta",
+                    status: status.isLoggedIn ? .ok : (status == .loggedOut ? .error : .warning),
+                    detail: status.isLoggedIn ? "login da pasta \(folderName)\(email)" : (status == .loggedOut ? "a pasta \(folderName) está sem login" : "status indisponível"),
+                    expected: nil, origin: nil,
+                    fix: status == .loggedOut ? .loginClaudeFolder(profile.claudeConfigDir) : nil
+                ))
+            }
         }
 
         // Tools: API keys of the profile.
@@ -237,7 +253,9 @@ extension Fix {
         case let .switchGitHub(host, user):
             "gh auth switch --hostname \(host) --user \(user)"
         case let .loginClaude(id):
-            "Abrir o login da conta Claude \(config.claudeAccount(id)?.nickname ?? "")."
+            "Gerar um novo token para a conta Claude \(config.claudeAccount(id)?.nickname ?? "") (claude setup-token)."
+        case let .loginClaudeFolder(dir):
+            "Entrar no Claude Code na pasta \(dir.map(environment.abbreviate) ?? "~/.claude") (claude auth login)."
         case let .loginGitHub(host):
             "gh auth login --hostname \(host) --git-protocol https --web"
         case let .setAPIKeySecret(id):
