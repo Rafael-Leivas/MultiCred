@@ -129,13 +129,16 @@ public struct Verifier: Sendable {
             ))
             if let account = config.claudeAccount(state.appliedClaudeAccountId) {
                 let present = (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
+                let legacy = present && ((try? environment.keychain.isLegacyItem(account: account.keychainAccount)) ?? false)
                 let email = account.email.map { " · \($0)" } ?? ""
                 items.append(CheckItem(
                     id: "claude.login", section: .tools, title: "Claude Code · conta",
-                    status: present ? .ok : .error,
-                    detail: present ? "\(account.nickname)\(email) (token no Keychain), pasta \(folderName)" : "\(account.nickname): token não está no Keychain",
+                    status: !present ? .error : (legacy ? .warning : .ok),
+                    detail: !present ? "\(account.nickname): token não está no Keychain"
+                        : legacy ? "\(account.nickname): os terminais pedem a senha do Mac para ler o token; gere ou cole o token de novo"
+                        : "\(account.nickname)\(email) (token no Keychain), pasta \(folderName)",
                     expected: nil, origin: nil,
-                    fix: present ? nil : .loginClaude(account.id)
+                    fix: present && !legacy ? nil : .loginClaude(account.id)
                 ))
             } else {
                 let status = await claudeStatus(ClaudeFolder.ownLogin(profile.claudeConfigDir))
@@ -154,11 +157,14 @@ public struct Verifier: Sendable {
         for keyId in profile?.apiKeyIds ?? [] {
             guard let key = config.apiKey(keyId) else { continue }
             let present = (try? environment.keychain.containsItem(account: key.keychainAccount)) ?? false
+            let legacy = present && ((try? environment.keychain.isLegacyItem(account: key.keychainAccount)) ?? false)
             items.append(CheckItem(
                 id: "key.\(keyId)", section: .tools, title: "\(key.provider.displayName) · \(key.envVar)",
-                status: present ? .ok : .error,
-                detail: present ? "\(key.nickname) no Keychain" : "chave não está no Keychain",
-                expected: nil, origin: nil, fix: present ? nil : .setAPIKeySecret(keyId)
+                status: !present ? .error : (legacy ? .warning : .ok),
+                detail: !present ? "chave não está no Keychain"
+                    : legacy ? "\(key.nickname): os terminais pedem a senha do Mac para ler; cole a chave de novo"
+                    : "\(key.nickname) no Keychain",
+                expected: nil, origin: nil, fix: present && !legacy ? nil : .setAPIKeySecret(keyId)
             ))
         }
 

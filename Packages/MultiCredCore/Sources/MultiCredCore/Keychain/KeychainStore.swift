@@ -1,7 +1,7 @@
 import Foundation
 
-/// Storage for API key values. Only API keys live here; MultiCred never stores,
-/// reads or copies Claude Code or gh tokens.
+/// Storage for API key values and Claude account tokens (D37). MultiCred never
+/// stores, reads or copies gh tokens or Claude Code's own credentials.
 ///
 /// There is intentionally no method that returns a stored value: the app only
 /// writes keys and checks that they exist. The value is read by the user's shell
@@ -15,6 +15,13 @@ public protocol KeychainStore: Sendable {
     func deleteItem(account: String) throws
     /// Accounts of every item MultiCred created (used by uninstall).
     func allAccounts() throws -> [String]
+    /// True for items created by older builds that make the shell ask for the
+    /// login password on every read (saving the value again fixes it).
+    func isLegacyItem(account: String) throws -> Bool
+}
+
+public extension KeychainStore {
+    func isLegacyItem(account: String) throws -> Bool { false }
 }
 
 public enum KeychainError: Error, Equatable, CustomStringConvertible {
@@ -23,6 +30,7 @@ public enum KeychainError: Error, Equatable, CustomStringConvertible {
     case userCanceled
     case accessDenied
     case unexpectedStatus(Int32)
+    case toolFailed(String)
 
     public var description: String {
         switch self {
@@ -31,6 +39,7 @@ public enum KeychainError: Error, Equatable, CustomStringConvertible {
         case .userCanceled: "Keychain access was canceled"
         case .accessDenied: "Keychain access was denied"
         case let .unexpectedStatus(status): "Keychain error \(status)"
+        case let .toolFailed(reason): "security failed: \(reason.isEmpty ? "unknown error" : reason)"
         }
     }
 }
@@ -51,6 +60,7 @@ public enum KeychainConstants {
 public final class InMemoryKeychainStore: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
+    private var legacy: Set<String> = []
 
     public init() {}
 
@@ -59,6 +69,18 @@ public final class InMemoryKeychainStore: KeychainStore, @unchecked Sendable {
         guard !value.isEmpty else { throw KeychainError.emptySecret }
         lock.lock(); defer { lock.unlock() }
         items[account] = value
+        legacy.remove(account)
+    }
+
+    public func isLegacyItem(account: String) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return legacy.contains(account)
+    }
+
+    /// Test-only: pretend an item was created by an older build.
+    public func markLegacy(account: String) {
+        lock.lock(); defer { lock.unlock() }
+        legacy.insert(account)
     }
 
     public func containsItem(account: String) throws -> Bool {

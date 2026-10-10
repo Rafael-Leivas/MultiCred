@@ -57,16 +57,22 @@ que o `gh` poderia ler como opção. A validação agora exige letra ou dígito 
 
 ## Keychain (risco aceito)
 
-As chaves de API ficam no Keychain (serviço `app.multicred.apikey`, conta = UUID). O item é criado
-com uma lista de acesso que confia no próprio app e em `/usr/bin/security`, para o shell exportar a
-chave sem diálogo. Consequência: qualquer processo do mesmo usuário que chame
-`/usr/bin/security find-generic-password -s app.multicred.apikey -a <uuid> -w` lê a chave sem
-pergunta. É o mesmo nível de exposição de exportar a chave no shell. As chaves **não** vão para
-`launchctl setenv` (lá ficariam visíveis para todo processo). O app não tem método para ler o
-valor de volta: só grava, confere existência e apaga.
+As chaves de API e os tokens das contas Claude ficam no Keychain (serviço `app.multicred.apikey`,
+conta = UUID, rótulo `MultiCred`). O item é **criado pelo próprio `/usr/bin/security`**
+(`security -i`, comando pela entrada padrão, valor em hexadecimal, nunca nos argumentos), do mesmo
+jeito que o Claude Code guarda a credencial dele. Assim o shell lê o valor com
+`security find-generic-password -w` sem diálogo. Verificado em 2026-10-10 no Keychain real com um
+item de teste (leitura em 0,02 s, sem pedido de senha; item apagado em seguida).
 
-Não verificado nesta máquina: se o macOS mostra um diálogo na primeira leitura pelo `security`
-(lista de partições do item). Se aparecer, "Sempre permitir" resolve. Coberto no roteiro de teste.
+Consequência (risco aceito, igual ao do Claude Code e do gh): qualquer processo do mesmo usuário
+que chame `security find-generic-password -s app.multicred.apikey -a <uuid> -w` lê o valor sem
+pergunta. É o mesmo nível de exposição de exportar a variável no shell. Os valores **não** vão para
+`launchctl setenv` (lá ficariam visíveis para todo processo). O app não tem método para ler o
+valor de volta: só grava, confere existência (só atributos) e apaga.
+
+Itens antigos (rótulo `MultiCred API key`, criados com `SecItemAdd`) ficam na partição do app; com
+assinatura ad hoc ela muda a cada build, e o macOS pede a senha a cada leitura pelo shell. O
+Verificar aponta esses itens; salvar o valor de novo recria o item no esquema novo.
 
 ## Tokens das ferramentas
 
