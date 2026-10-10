@@ -70,9 +70,15 @@ Não verificado nesta máquina: se o macOS mostra um diálogo na primeira leitur
 
 ## Tokens das ferramentas
 
-- Claude Code: o app só define/remove `CLAUDE_CONFIG_DIR`, roda `claude auth login/status/logout` e
-  lê `oauthAccount.emailAddress` do `.claude.json` (sem token). Nunca acessa os itens
-  `Claude Code-credentials*` do Keychain.
+- Claude Code, login da pasta: o app só define/remove `CLAUDE_CONFIG_DIR`, roda
+  `claude auth login/status/logout` e lê `oauthAccount.emailAddress` do `.claude.json` (sem token).
+  Nunca acessa os itens `Claude Code-credentials*` do Keychain.
+- Claude Code, contas Claude (D37, exceção aprovada pelo usuário): o token gerado por
+  `claude setup-token` (rodado num pseudo-terminal com uma pasta temporária, apagada no fim) ou
+  colado pelo usuário vai direto para o Keychain, no mesmo serviço das chaves de API e com o mesmo
+  risco aceito acima. Nunca aparece na tela (a saída do terminal é mascarada), no log nem no
+  `config.json`. O shell o exporta como `CLAUDE_CODE_OAUTH_TOKEN` lendo pelo `security`, como as
+  chaves; não vai para `launchctl`. Remover a conta ou desinstalar apaga o item.
 - gh: `gh auth status --json hosts` (sem `--show-token`), `gh config get … user`,
   `gh auth switch`, `gh auth login --web`. O token fica com o gh.
 

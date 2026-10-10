@@ -152,8 +152,8 @@ struct VerifyPage: View {
         switch result {
         case .done: break
         case let .failed(message): model.lastError = message
-        case let .openClaudeLogin(id):
-            if let account = model.config.claudeAccount(id) { navigator.showClaudeLogin(account) }
+        case let .openClaudeToken(id): navigator.show(.claude, then: .replaceClaudeToken(id))
+        case let .openClaudeFolderLogin(dir): navigator.showClaudeFolderLogin(dir)
         case let .openGitHubLogin(host): navigator.showGitHubLogin(host: host)
         case let .openAPIKey(id): navigator.show(.apiKeys, then: .editAPIKey(id))
         }

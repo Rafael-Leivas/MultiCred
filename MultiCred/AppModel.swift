@@ -80,6 +80,7 @@ final class AppModel {
     // MARK: Derived
 
     var activeProfile: Profile? { config.profile(state.profileId) }
+    /// Token account in use; nil = the profile folder's own login.
     var appliedClaudeAccount: ClaudeAccount? { config.claudeAccount(state.appliedClaudeAccountId) }
 
     var consistency: Consistency {
@@ -88,12 +89,30 @@ final class AppModel {
         return .problems(count: verification.problems.count, first: first.title)
     }
 
-    func claudeStatus(_ account: ClaudeAccount) -> ClaudeLoginStatus? { claudeStatuses[account.id] }
+    /// Login status of a Claude folder itself (nil path = ~/.claude).
+    func folderStatus(_ configDir: String?) -> ClaudeLoginStatus? {
+        claudeStatuses[ClaudeFolder.ownLogin(configDir).id]
+    }
 
-    /// A profile cannot really be used while its Claude account needs a login.
+    func folderName(_ configDir: String?) -> String {
+        configDir.map(environment.abbreviate) ?? "~/.claude"
+    }
+
+    /// What authenticates a profile right now, in words.
+    func claudeCredentialDescription(for profile: Profile?) -> String {
+        if let account = appliedClaudeAccount { return account.nickname }
+        if case let .loggedIn(email?)? = folderStatus(profile?.claudeConfigDir) { return "login da pasta (\(email))" }
+        return "login da pasta"
+    }
+
+    /// A profile cannot really be used while its Claude credential is missing.
     func needsClaudeLogin(_ profile: Profile) -> Bool {
-        guard let account = config.claudeAccount(profile.claudeAccountId) else { return false }
-        return claudeStatuses[account.id] == .loggedOut
+        if let account = config.claudeAccount(profile.claudeAccountId) { return !hasToken(account) }
+        return folderStatus(profile.claudeConfigDir) == .loggedOut
+    }
+
+    func hasToken(_ account: ClaudeAccount) -> Bool {
+        (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
     }
 
     func githubLogin(for account: GitHubAccount) -> GitHubLogin? {
@@ -108,8 +127,10 @@ final class AppModel {
     }
 
     @discardableResult
+    /// `accountId` nil = the profile folder's own login.
     func switchClaudeOnly(to accountId: UUID?) async -> String? {
-        await performSwitch(claudeOnly: true) { try await self.engine.switchClaudeOnly(to: accountId, in: self.config) }
+        let override = ClaudeFolder.override(for: accountId, profile: activeProfile)
+        return await performSwitch(claudeOnly: true) { try await self.engine.switchClaudeOnly(to: override, in: self.config) }
     }
 
     /// At launch: launchd forgets on reboot, so the active profile is applied again.
@@ -202,35 +223,51 @@ final class AppModel {
         (try? environment.keychain.containsItem(account: key.keychainAccount)) ?? false
     }
 
-    // MARK: Claude accounts
+    // MARK: Claude folders (own login) and token accounts
+
+    /// Folders used by profiles, plus the default one.
+    var claudeFoldersInUse: [String?] {
+        var seen: [String?] = []
+        for dir in [nil] + config.profiles.map(\.claudeConfigDir) where !seen.contains(dir) { seen.append(dir) }
+        return seen
+    }
 
     func refreshClaudeStatuses(force: Bool = false) async {
-        for account in config.claudeAccounts {
-            await refreshClaudeStatus(account.id, force: force)
+        for dir in claudeFoldersInUse {
+            await refreshFolderStatus(dir, force: force)
         }
     }
 
-    func refreshClaudeStatus(_ accountId: UUID, force: Bool = true) async {
-        guard let account = config.claudeAccount(accountId) else { return }
-        if force { await statusService.invalidate(accountId) }
-        let status = await statusService.status(for: account)
-        claudeStatuses[accountId] = status
-        if case let .loggedIn(email?) = status, account.email != email {
-            var updated = account
-            updated.email = email
-            edit { try ConfigEditor.updateClaudeAccount(updated, in: $0) }
+    func refreshFolderStatus(_ configDir: String?, force: Bool = true) async {
+        let pseudo = ClaudeFolder.ownLogin(configDir)
+        if force { await statusService.invalidate(pseudo.id) }
+        claudeStatuses[pseudo.id] = await statusService.status(for: pseudo)
+    }
+
+    /// Creates the folder if needed and returns its canonical path (nil = ~/.claude).
+    func prepareClaudeFolder(_ choice: ClaudeFolderChoice) -> String?? {
+        do {
+            return .some(try ClaudeAccountEditor.prepareFolder(choice, environment: environment))
+        } catch {
+            lastError = UserMessages.describe(error)
+            return nil
         }
     }
 
     @discardableResult
-    func addClaudeAccount(nickname: String, color: ProfileColor, folder: ClaudeFolderChoice) -> ClaudeAccount? {
+    func addClaudeTokenAccount(nickname: String, email: String?, color: ProfileColor, token: String) -> ClaudeAccount? {
         do {
-            let (updated, account) = try ClaudeAccountEditor.add(
-                nickname: nickname, color: color, folder: folder, to: config, environment: environment
+            let (updated, account) = try ClaudeAccountEditor.addTokenAccount(
+                nickname: nickname, email: email, color: color, token: token, to: config, keychain: environment.keychain
             )
-            try repository.save(updated)
+            do {
+                try repository.save(updated)
+            } catch {
+                try? environment.keychain.deleteItem(account: account.keychainAccount)
+                throw error
+            }
             config = updated
-            log.log(.info, "claude account added: \(account.nickname) dir=\(account.configDir.map(environment.abbreviate) ?? "default")")
+            log.log(.info, "claude token account added: \(account.nickname)")
             return account
         } catch {
             lastError = UserMessages.describe(error)
@@ -238,10 +275,22 @@ final class AppModel {
         }
     }
 
-    func removeClaudeAccount(_ accountId: UUID) {
-        if edit({ ClaudeAccountEditor.remove(accountId, from: $0) }) {
-            claudeStatuses[accountId] = nil
+    func replaceClaudeToken(of account: ClaudeAccount, with token: String) -> Bool {
+        do {
+            try ClaudeAccountEditor.replaceToken(of: account, with: token, keychain: environment.keychain)
+            log.log(.info, "claude token replaced: \(account.nickname)")
+            return true
+        } catch {
+            lastError = UserMessages.describe(error)
+            return false
         }
+    }
+
+    func removeClaudeAccount(_ accountId: UUID) {
+        let wasApplied = state.appliedClaudeAccountId == accountId
+        guard edit({ ClaudeAccountEditor.remove(accountId, from: $0, keychain: environment.keychain) }) else { return }
+        // Shells must stop exporting a token that no longer exists.
+        if wasApplied { Task { await switchClaudeOnly(to: nil) } }
     }
 
     func profilesUsing(claudeAccount accountId: UUID) -> [Profile] {
@@ -249,9 +298,9 @@ final class AppModel {
     }
 
     /// `claude auth logout` for one folder (or clears the simulated state file).
-    func logoutClaudeAccount(_ accountId: UUID) async -> String? {
-        guard let account = config.claudeAccount(accountId) else { return nil }
-        defer { Task { await refreshClaudeStatus(accountId) } }
+    func logoutClaudeFolder(_ configDir: String?) async -> String? {
+        let account = ClaudeFolder.ownLogin(configDir)
+        defer { Task { await refreshFolderStatus(configDir) } }
 
         switch claudeLoginMode {
         case .simulated:
@@ -271,7 +320,7 @@ final class AppModel {
             let cli = ClaudeCLI(runner: runner, executable: claude, baseEnvironment: environment.baseProcessEnvironment(path: await tools.searchDirectories()))
             do {
                 try await cli.logout(account)
-                log.log(.info, "claude logout for \(account.nickname)")
+                log.log(.info, "claude logout for folder \(folderName(configDir))")
                 return nil
             } catch {
                 return UserMessages.describe(error)
@@ -324,7 +373,10 @@ final class AppModel {
     enum FixResult {
         case done
         case failed(String)
-        case openClaudeLogin(UUID)
+        /// New token for a Claude account.
+        case openClaudeToken(UUID)
+        /// Log in a Claude folder itself.
+        case openClaudeFolderLogin(String?)
         case openGitHubLogin(String)
         case openAPIKey(UUID)
     }
@@ -359,7 +411,8 @@ final class AppModel {
             } else {
                 result = .failed(UserMessages.describe(PreflightFailure.toolMissing(.gh)))
             }
-        case let .loginClaude(id): result = .openClaudeLogin(id)
+        case let .loginClaude(id): result = .openClaudeToken(id)
+        case let .loginClaudeFolder(dir): result = .openClaudeFolderLogin(dir)
         case let .loginGitHub(host): result = .openGitHubLogin(host)
         case let .setAPIKeySecret(id): result = .openAPIKey(id)
         }
@@ -431,15 +484,10 @@ final class AppModel {
         Uninstaller(environment: environment).preview()
     }
 
-    func uninstall(logoutCreatedClaudeAccounts: Bool) async -> UninstallReport {
-        var extraProblems: [String] = []
-        if logoutCreatedClaudeAccounts {
-            for account in config.claudeAccounts where account.configDir != nil {
-                if let error = await logoutClaudeAccount(account.id) { extraProblems.append(error) }
-            }
-        }
-        var report = await Uninstaller(environment: environment).apply()
-        report.problems += extraProblems
+    /// Claude folders and their logins are left alone; the Uninstaller deletes
+    /// the Claude tokens with the other Keychain items.
+    func uninstall() async -> UninstallReport {
+        let report = await Uninstaller(environment: environment).apply()
         setOpenAtLogin(false)
         isInstalled = false
         config = Config()

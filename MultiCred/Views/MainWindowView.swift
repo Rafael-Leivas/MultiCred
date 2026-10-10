@@ -54,7 +54,7 @@ struct MainWindowView: View {
                 countRow("GitHub", "chevron.left.forwardslash.chevron.right", model.config.githubAccounts.count,
                          warning: model.config.githubAccounts.contains { model.githubLogin(for: $0)?.isUsable == false }).tag(SidebarItem.github)
                 countRow("Claude", "sparkle", model.config.claudeAccounts.count,
-                         warning: model.config.claudeAccounts.contains { model.claudeStatus($0) == .loggedOut }).tag(SidebarItem.claude)
+                         warning: model.config.profiles.contains { model.needsClaudeLogin($0) }).tag(SidebarItem.claude)
                 countRow("Chaves de API", "key", model.config.apiKeys.count,
                          warning: model.config.apiKeys.contains { !model.hasSecret($0) }).tag(SidebarItem.apiKeys)
             }
@@ -111,7 +111,9 @@ struct MainWindowView: View {
                 ContentUnavailableView("Login encerrado", systemImage: "xmark.circle")
             }
         case .addClaude: AddClaudeAccountPage(model: model, navigator: navigator)
+        case let .replaceClaudeToken(id): AddClaudeAccountPage(model: model, navigator: navigator, replacing: id)
         case let .claudeAccount(id): ClaudeAccountDetailPage(model: model, navigator: navigator, accountId: id)
+        case let .claudeFolder(dir): ClaudeFolderDetailPage(model: model, navigator: navigator, configDir: dir)
         case let .claudeLogin(id):
             if let session = navigator.claudeSessions[id] {
                 LoginPage(session: session, model: model, navigator: navigator)

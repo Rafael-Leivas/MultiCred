@@ -4,7 +4,7 @@ import MultiCredCore
 /// Portuguese, user-facing text for core errors. The core stays language-neutral.
 enum UserMessages {
     static let busy = "Uma troca já está em andamento."
-    static let defaultAccountInTestMode = "No modo de teste, o login real só funciona em contas com pasta própria. A conta padrão usaria o mesmo item do Keychain da sua conta real em ~/.claude."
+    static let defaultAccountInTestMode = "No modo de teste, o login real só funciona em pastas próprias. A pasta padrão usaria o mesmo item do Keychain do seu login real em ~/.claude."
 
     static func describe(_ error: any Error) -> String {
         switch error {
@@ -48,8 +48,8 @@ enum UserMessages {
         case let .invalidEnvVar(_, name): "\"\(name)\" não é um nome de variável válido (use LETRAS_MAIUSCULAS e _)."
         case let .reservedEnvVar(_, name): "\(name) é reservada e não pode ser usada para uma chave."
         case let .duplicateEnvVarInProfile(_, name): "O perfil tem duas chaves para \(name)."
-        case .invalidClaudeDirectory: "Pasta da conta Claude inválida."
-        case .duplicateClaudeDirectory: "Duas contas Claude usam a mesma pasta."
+        case .invalidClaudeDirectory: "Pasta do Claude inválida (use um caminho absoluto, sem / no fim)."
+        case .duplicateClaudeDirectory: "Duas contas Claude antigas usam a mesma pasta."
         case .invalidSSHKeyPath: "Caminho da chave SSH inválido (use caminho absoluto ou começando com ~/)."
         case .missingReference: "O perfil aponta para uma conta que não existe mais."
         case .duplicateID: "Configuração com identificadores repetidos."
@@ -91,7 +91,8 @@ enum UserMessages {
         case .profileNotFound: "Esse perfil não existe mais."
         case .claudeAccountNotFound: "Essa conta Claude não existe mais."
         case let .toolMissing(tool): "\(tool.displayName) não foi encontrado neste Mac."
-        case let .claudeDirectoryMissing(path): "A pasta da conta Claude não existe: \(path)"
+        case let .claudeDirectoryMissing(path): "A pasta do Claude deste perfil não existe: \(path)"
+        case let .claudeTokenMissing(nickname): "O token da conta Claude \(nickname) não está no Keychain. Gere outro em Contas › Claude."
         case let .apiKeyMissing(nickname, envVar): "A chave \(nickname) (\(envVar)) não está no Keychain."
         case let .keychainUnavailable(reason): "Não consegui consultar o Keychain: \(reason)"
         }
@@ -100,7 +101,8 @@ enum UserMessages {
     static func describe(_ error: ClaudeAccountError) -> String {
         switch error {
         case let .invalidPath(path): "Caminho inválido: \(path). Use um caminho absoluto ou começando com ~/."
-        case let .folderAlreadyUsed(owner): "Essa pasta já é usada pela conta \(owner)."
+        case .invalidToken: "Isso não parece um token do Claude Code. Gere um com \"claude setup-token\" e cole a linha que começa com sk-ant-oat."
+        case let .keychain(reason): "Não consegui gravar no Keychain: \(reason)"
         case let .folderMissing(path): "A pasta não existe: \(path)"
         case let .notADirectory(path): "Não é uma pasta: \(path)"
         case let .outsideSandbox(path): "No modo de teste, a pasta precisa ficar dentro do HOME de teste (\(path) está fora)."

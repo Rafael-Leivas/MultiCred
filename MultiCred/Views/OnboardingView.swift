@@ -182,14 +182,14 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Perfis sugeridos").font(.title2.weight(.semibold))
-                Text("Montados a partir do que já existe no seu Mac: \(setup.gitEmail == nil ? 0 : 1) identidade git, \(setup.githubLogins.count) conta(s) GitHub e \(setup.claudeFolders.count) conta(s) Claude. Dá para ajustar tudo depois.")
+                Text("Montados a partir do que já existe no seu Mac: \(setup.gitEmail == nil ? 0 : 1) identidade git, \(setup.githubLogins.count) conta(s) GitHub e \(setup.claudeFolders.count) pasta(s) do Claude. Dá para ajustar tudo depois.")
                     .foregroundStyle(.secondary)
                 if setup.hasLegacyInstall {
                     InfoNote(text: "Encontramos a versão antiga em ~/Perfis. Os perfis abaixo vieram do perfis.conf, e no próximo passo você pode remover as linhas antigas do seu ~/.zshrc e ~/.gitconfig.", symbol: "clock.arrow.circlepath")
                 }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                     ForEach($draft.profiles) { $profile in
-                        ProfileSuggestionCard(profile: $profile, config: $draft, statuses: claudeStatuses(setup)) {
+                        ProfileSuggestionCard(profile: $profile, config: $draft, folders: setup.claudeFolders.map(\.configDir), statuses: claudeStatuses(setup)) {
                             draft.profiles.removeAll { $0.id == profile.id }
                         }
                     }
@@ -306,6 +306,8 @@ struct OnboardingView: View {
 private struct ProfileSuggestionCard: View {
     @Binding var profile: Profile
     @Binding var config: Config
+    /// Detected Claude folders (nil = ~/.claude).
+    let folders: [String?]
     let statuses: [String?: ClaudeLoginStatus]
     let onRemove: () -> Void
 
@@ -342,11 +344,10 @@ private struct ProfileSuggestionCard: View {
                     .labelsHidden()
                 }
                 GridRow {
-                    Text("Claude").foregroundStyle(.secondary)
-                    Picker("", selection: $profile.claudeAccountId) {
-                        Text("Não trocar").tag(UUID?.none)
-                        ForEach(config.claudeAccounts) { account in
-                            Text(claudeLabel(account)).tag(UUID?.some(account.id))
+                    Text("Pasta Claude").foregroundStyle(.secondary)
+                    Picker("", selection: $profile.claudeConfigDir) {
+                        ForEach(folderOptions, id: \.self) { dir in
+                            Text(folderLabel(dir)).tag(dir)
                         }
                     }
                     .labelsHidden()
@@ -360,13 +361,23 @@ private struct ProfileSuggestionCard: View {
     }
 
     private var missingCount: Int {
-        [profile.gitIdentityId == nil, profile.githubAccountId == nil, profile.claudeAccountId == nil].filter { $0 }.count
+        [profile.gitIdentityId == nil, profile.githubAccountId == nil].filter { $0 }.count
     }
 
-    private func claudeLabel(_ account: ClaudeAccount) -> String {
-        let folder = account.configDir.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ".claude"
-        let state = statuses[account.configDir].map { $0.isLoggedIn ? "" : " · entrar depois" } ?? ""
-        return "\(account.email ?? account.nickname) (\(folder))\(state)"
+    private var folderOptions: [String?] {
+        var options: [String?] = [nil]
+        for dir in folders + [profile.claudeConfigDir] where !options.contains(dir) { options.append(dir) }
+        return options
+    }
+
+    /// Folder name plus who is logged in there, e.g. ".claude-pessoal · eu@x.com".
+    private func folderLabel(_ dir: String?) -> String {
+        let name = dir.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ".claude"
+        switch statuses[dir] {
+        case let .loggedIn(email?)?: return "\(name) · \(email)"
+        case .loggedOut?: return "\(name) · entrar depois"
+        default: return name
+        }
     }
 
     /// Edits the profile's git identity, creating one on first edit.

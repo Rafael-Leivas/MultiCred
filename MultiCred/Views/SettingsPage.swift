@@ -115,7 +115,6 @@ struct UninstallPage: View {
     let model: AppModel
     let navigator: MainNavigator
 
-    @State private var logoutClaude = false
     @State private var report: UninstallReport?
     @State private var running = false
 
@@ -130,18 +129,17 @@ struct UninstallPage: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(model.uninstallPreview()) { FileChangeView(change: $0) }
-                        Text("Também: launchctl unsetenv CLAUDE_CONFIG_DIR, apagar as chaves de API do Keychain, desligar a abertura ao iniciar a sessão. Os backups vão para ~/Library/Application Support/MultiCred-backups-<data>.")
+                        Text("Também: launchctl unsetenv CLAUDE_CONFIG_DIR, apagar do Keychain as chaves de API e os tokens das contas Claude (pastas e conversas do Claude ficam), desligar a abertura ao iniciar a sessão. Os backups vão para ~/Library/Application Support/MultiCred-backups-<data>.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                Toggle("Também sair das contas Claude com pasta própria (claude auth logout)", isOn: $logoutClaude)
                 HStack {
                     Spacer()
                     Button("Cancelar") { navigator.back() }.keyboardShortcut(.cancelAction)
                     Button("Desinstalar") {
                         Task {
                             running = true
-                            report = await model.uninstall(logoutCreatedClaudeAccounts: logoutClaude)
+                            report = await model.uninstall()
                             running = false
                         }
                     }

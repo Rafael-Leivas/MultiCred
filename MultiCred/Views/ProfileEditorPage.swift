@@ -10,6 +10,8 @@ struct ProfileEditorPage: View {
     @State private var draft = Profile(name: "", color: .indigo)
     @State private var loadedFor: UUID??
     @State private var confirmDeletion = false
+    @State private var folders = ClaudeFolderSummaries()
+    @State private var newFolderPath: String?
 
     private var isNew: Bool { profileId == nil }
     private var position: Int? { profileId.flatMap { id in model.config.profiles.firstIndex { $0.id == id } } }
@@ -30,14 +32,7 @@ struct ProfileEditorPage: View {
                            options: model.config.gitIdentities.map { ($0.id, "\($0.nickname) · \($0.email)", $0.color) })
                     picker("GitHub", symbol: "chevron.left.forwardslash.chevron.right", selection: $draft.githubAccountId,
                            options: model.config.githubAccounts.map { ($0.id, "\($0.username) · \($0.host)", $0.color) })
-                    picker("Claude", symbol: "sparkle", selection: $draft.claudeAccountId,
-                           options: model.config.claudeAccounts.map { ($0.id, "\($0.nickname)\($0.email.map { " · \($0)" } ?? "")", $0.color) })
-                    if draft.claudeAccountId == nil {
-                        Label("Sem conta Claude, este perfil não troca o Claude: ele continua em \(model.appliedClaudeAccount?.nickname ?? "na conta atual").",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
+                    claudeSection
                     ForEach(providers, id: \.self) { provider in
                         picker(provider.displayName, symbol: "key", selection: keyBinding(provider),
                                options: model.config.apiKeys.filter { $0.provider == provider }.map { ($0.id, "\($0.nickname) · \($0.envVar)", $0.color) })
@@ -45,7 +40,7 @@ struct ProfileEditorPage: View {
                 }
                 Section {
                 } footer: {
-                    Text("“Nenhuma” deixa aquele item como está ao trocar para este perfil. Chaves de API ficam no Keychain do macOS; o perfil guarda só qual item usar.")
+                    Text("“Nenhuma” deixa aquele item como está ao trocar para este perfil (o Claude sempre usa a pasta do perfil). Chaves de API ficam no Keychain do macOS; o perfil guarda só qual item usar.")
                 }
             }
             .formStyle(.grouped)
@@ -53,6 +48,7 @@ struct ProfileEditorPage: View {
         }
         .navigationTitle(isNew ? "Novo perfil" : "Editar perfil")
         .onAppear(perform: load)
+        .task { await folders.discover(environment: model.environment) }
         .onChange(of: profileId) { load() }
         .confirmationDialog("Apagar o perfil \(draft.name)?", isPresented: $confirmDeletion) {
             Button("Apagar perfil", role: .destructive) {
@@ -121,6 +117,99 @@ struct ProfileEditorPage: View {
             .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding(20)
+    }
+
+    /// Claude folder (agents, skills, chats) + which login to use in it.
+    @ViewBuilder private var claudeSection: some View {
+        Picker(selection: folderBinding) {
+            ForEach(folderOptions, id: \.self) { dir in
+                Text(folderLabel(dir)).tag(FolderTag.folder(dir))
+            }
+            Divider()
+            Text("Nova pasta…").tag(FolderTag.new)
+        } label: {
+            Label("Pasta do Claude", systemImage: "folder")
+        }
+        if let path = newFolderPath {
+            HStack {
+                TextField("Caminho", text: Binding(get: { path }, set: { newFolderPath = $0 }))
+                    .font(.body.monospaced())
+                Button("Criar") {
+                    if let dir = model.prepareClaudeFolder(.new(path)) {
+                        draft.claudeConfigDir = dir
+                        newFolderPath = nil
+                        Task { await folders.discover(environment: model.environment) }
+                    }
+                }
+                Button("Cancelar") { newFolderPath = nil }
+            }
+        }
+        Picker(selection: $draft.claudeAccountId) {
+            Text(folderLoginLabel).tag(UUID?.none)
+            ForEach(model.config.claudeAccounts) { account in
+                Label {
+                    Text("\(account.nickname)\(account.email.map { " · \($0)" } ?? "")")
+                } icon: {
+                    Image(systemName: "circle.fill").foregroundStyle(account.color.color)
+                }
+                .tag(UUID?.some(account.id))
+            }
+        } label: {
+            Label("Conta Claude", systemImage: "sparkle")
+        }
+        Text("A pasta guarda agents, skills e conversas. A conta é só o login: trocar a conta não muda a pasta.")
+            .font(.caption).foregroundStyle(.secondary)
+        if draft.claudeAccountId == nil, model.folderStatus(draft.claudeConfigDir) == .loggedOut {
+            HStack {
+                Label("A pasta \(model.folderName(draft.claudeConfigDir)) não tem login.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+                Spacer()
+                Button("Entrar…") { navigator.showClaudeFolderLogin(draft.claudeConfigDir) }.controlSize(.small)
+            }
+        }
+    }
+
+    private enum FolderTag: Hashable { case folder(String?), new }
+
+    private var folderBinding: Binding<FolderTag> {
+        Binding(
+            get: { .folder(draft.claudeConfigDir) },
+            set: { tag in
+                switch tag {
+                case let .folder(dir): draft.claudeConfigDir = dir
+                case .new: newFolderPath = "~/.claude-\(slug(draft.name))"
+                }
+            }
+        )
+    }
+
+    private var folderOptions: [String?] {
+        var options: [String?] = [nil]
+        for dir in folders.discovered + model.config.profiles.map(\.claudeConfigDir) + [draft.claudeConfigDir]
+        where !options.contains(dir) && dir != ClaudePaths.defaultConfigDir(environment: model.environment) {
+            options.append(dir)
+        }
+        return options
+    }
+
+    private func folderLabel(_ dir: String?) -> String {
+        var label = model.folderName(dir) + (dir == nil ? " (padrão)" : "")
+        if let summary = folders.summary(for: dir, environment: model.environment) {
+            label += " · \(summary.conversationCount) conversas"
+        }
+        return label
+    }
+
+    private var folderLoginLabel: String {
+        if case let .loggedIn(email?)? = model.folderStatus(draft.claudeConfigDir) { return "Login da própria pasta · \(email)" }
+        return "Login da própria pasta"
+    }
+
+    private func slug(_ name: String) -> String {
+        let folded = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
+        let cleaned = folded.map { $0.isLetter || $0.isNumber ? $0 : "-" }
+        let text = String(cleaned).split(separator: "-").joined(separator: "-")
+        return text.isEmpty ? "novo" : text
     }
 
     /// Providers with at least one key, plus OpenAI and Gemini (always shown, as in the design).

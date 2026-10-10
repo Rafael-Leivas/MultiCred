@@ -221,6 +221,22 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertFalse(try read(paths.envSh).contains("CLAUDE_CODE_OAUTH_TOKEN=\"$("))
     }
 
+    func testFolderLoginOverrideBeatsAProfileTokenAccount() async throws {
+        config.profiles[1].claudeAccountId = marco.id
+        let engine = engine()
+        _ = try await engine.switchProfile(config.profiles[1].id, in: config)
+
+        let override = ClaudeFolder.override(for: nil, profile: config.profiles[1])
+        XCTAssertEqual(override, ClaudeFolder.ownLoginOverride)
+        let result = try await engine.switchClaudeOnly(to: override, in: config)
+        XCTAssertNil(result.state.appliedClaudeAccountId)
+        XCTAssertFalse(try read(paths.envSh).contains("CLAUDE_CODE_OAUTH_TOKEN=\"$("))
+        let reapplied = try await engine.reapplyActiveProfile(in: config)
+        XCTAssertNil(reapplied?.state.appliedClaudeAccountId, "kept at login")
+
+        XCTAssertNil(ClaudeFolder.override(for: marco.id, profile: config.profiles[1]), "the profile default needs no override")
+    }
+
     func testMissingTokenIsAPreflightFailure() async throws {
         try keychain.deleteItem(account: marco.keychainAccount)
         _ = try await engine().switchProfile(personal.id, in: config)

@@ -29,9 +29,8 @@ struct MenuHeaderView: View {
                     if let gh = model.config.githubAccount(profile.githubAccountId) {
                         line("chevron.left.forwardslash.chevron.right", gh.username)
                     }
-                    if let claude = model.appliedClaudeAccount {
-                        line("sparkle", "Claude · \(claude.nickname)" + (model.state.claudeOverrideId != nil ? " (só Claude)" : ""))
-                    }
+                    line("sparkle", "Claude · \(model.folderName(profile.claudeConfigDir)) · \(model.claudeCredentialDescription(for: profile))"
+                         + (model.state.claudeOverrideId != nil ? " (só Claude)" : ""))
                 }
                 .padding(.leading, 52)
             } else {

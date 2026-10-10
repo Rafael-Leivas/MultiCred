@@ -99,6 +99,7 @@ Tudo abaixo está **aprovado por delegação** e pode ser revisto.
 | D34 | Login do GitHub pelo próprio `gh auth login --web` no pseudo-terminal; depois do login, a conta ativa volta para a do perfil | "Trocar credenciais do GitHub" completo sem o app ver tokens |
 | D35 | Sessões do Claude Code contadas por processo raiz (caminho do executável), não por nome | Instalação nativa usa nomes `claude`, `<versão>` e auxiliares |
 | D36 | Item de login só com o app em /Applications; aviso quando o macOS pede aprovação | Evita item de login apontando para a pasta de build |
+| D37 | Modelo do Claude (config v2): a **pasta** do Claude (agents, skills, conversas, ajustes) pertence ao perfil (`Profile.claudeConfigDir`) e só muda com o perfil. A **conta** Claude é só a credencial: token de `claude setup-token`, guardado no Keychain e exportado nos shells como `CLAUDE_CODE_OAUTH_TOKEN`. Sem conta = login da própria pasta. "Trocar só a conta Claude" mexe só nos arquivos de ambiente (nada de launchd, nada de pasta). Migração automática da v1 (conta = pasta) com cópia `config.json.v1`. Relaxa a regra "nunca guardar tokens do Claude" **só** para esses tokens | Pedido do usuário: "a única coisa que deve mudar é a conta… ele não deve mudar de pasta… uma conta é apenas para pegar e utilizar os tokens". O token vale nos terminais, não em apps gráficos (que seguem com o login da pasta) |
 | D24 | Menu via `NSStatusItem` + `NSMenu` com cabeçalho SwiftUI em `NSMenuItem.view` (o `MenuBarExtra(.menu)` não aceita o cabeçalho rico do 1a) | Fidelidade ao design |
 
 ---

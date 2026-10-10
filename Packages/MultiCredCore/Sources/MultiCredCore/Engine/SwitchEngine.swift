@@ -101,14 +101,17 @@ public actor SwitchEngine {
 
         let profile = config.profile(profileId)
         if profileId != nil, profile == nil { throw SwitchError.preflight(.profileNotFound) }
-        if let override, config.claudeAccount(override) == nil { throw SwitchError.preflight(.claudeAccountNotFound) }
+        if let override, override != ClaudeFolder.ownLoginOverride, config.claudeAccount(override) == nil {
+            throw SwitchError.preflight(.claudeAccountNotFound)
+        }
 
         // The Claude folder (agents, skills, chats) belongs to the profile and only
         // changes with the profile. The Claude account is just the credential:
         // the override (switch only the Claude account) wins over the profile's
         // choice, and no account means the folder's own login.
         let claudeTarget: ClaudeTarget = profile.map { $0.claudeConfigDir.map(ClaudeTarget.directory) ?? .defaultAccount } ?? .unchanged
-        let tokenAccount = config.claudeAccount(override ?? profile?.claudeAccountId).flatMap { $0.kind == .token ? $0 : nil }
+        let chosen = override == ClaudeFolder.ownLoginOverride ? nil : (override ?? profile?.claudeAccountId)
+        let tokenAccount = config.claudeAccount(chosen).flatMap { $0.kind == .token ? $0 : nil }
 
         let now = environment.clock()
         let newState = ActiveState(

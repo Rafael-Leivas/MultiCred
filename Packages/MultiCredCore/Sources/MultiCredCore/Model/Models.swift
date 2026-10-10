@@ -120,6 +120,17 @@ public struct ClaudeAccount: Codable, Hashable, Identifiable, Sendable {
 public enum ClaudeFolder {
     public static let tokenVariable = "CLAUDE_CODE_OAUTH_TOKEN"
 
+    /// Override meaning "the folder's own login", even when the profile's
+    /// default is a token account.
+    public static let ownLoginOverride = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1))
+
+    /// The override to store for "use this account now" (nil = folder login):
+    /// nil when it matches the profile's default, so the state stays clean.
+    public static func override(for accountId: UUID?, profile: Profile?) -> UUID? {
+        if accountId == profile?.claudeAccountId { return nil }
+        return accountId ?? ownLoginOverride
+    }
+
     /// A pseudo account to reuse status helpers for a folder's own login. Its id
     /// is derived from the path, so status caches keep working across calls.
     public static func ownLogin(_ configDir: String?) -> ClaudeAccount {

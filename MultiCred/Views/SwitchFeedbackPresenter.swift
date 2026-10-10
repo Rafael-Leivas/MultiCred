@@ -71,8 +71,8 @@ final class SwitchFeedbackPresenter {
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
         if outcome.claudeOnly {
-            content.title = "Conta Claude: \(outcome.claudeAccount?.nickname ?? "")"
-            content.body = "Só o Claude Code mudou. Vale para novas sessões."
+            content.title = "Conta Claude: \(outcome.claudeAccount?.nickname ?? "login da pasta")"
+            content.body = "Só o login do Claude mudou; agents, skills e conversas ficam. Vale para novos terminais."
         } else {
             content.title = "Agora em \(outcome.profile?.name ?? "")"
             content.body = "\(SwitchHUDView.changedItems(outcome).joined(separator: ", ")) trocados."
@@ -106,6 +106,9 @@ struct SwitchHUDView: View {
             if outcome.claudeOnly, let account = outcome.claudeAccount {
                 AccountAvatar(name: account.nickname, color: account.color, size: 64)
                 Text(account.nickname).font(.title2.weight(.semibold))
+            } else if outcome.claudeOnly {
+                Image(systemName: "folder").font(.system(size: 44)).foregroundStyle(.secondary)
+                Text("Login da pasta").font(.title2.weight(.semibold))
             } else if let profile = outcome.profile {
                 ProfileBadge(icon: profile.icon, color: profile.color, size: 64)
                 Text(profile.name).font(.title2.weight(.semibold))
@@ -119,7 +122,7 @@ struct SwitchHUDView: View {
             if sticky {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                    Text("\(sessionsText) do Claude Code abertas antes da troca continuam na conta anterior. Reinicie-as para usar \(outcome.claudeAccount?.nickname ?? "a nova conta").")
+                    Text("\(sessionsText) do Claude Code abertas antes da troca continuam na conta anterior. Reinicie-as para usar \(outcome.claudeAccount?.nickname ?? "o login da pasta").")
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)

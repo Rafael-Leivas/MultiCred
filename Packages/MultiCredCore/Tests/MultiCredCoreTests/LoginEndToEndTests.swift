@@ -82,3 +82,40 @@ final class LoginEndToEndTests: SafeTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent(".claude.json").path))
     }
 }
+
+/// setup-token simulator → real pseudo-terminal → parser: the token is captured
+/// whole and never left visible in the transcript.
+final class SetupTokenEndToEndTests: SafeTestCase {
+    private final class Capture: @unchecked Sendable {
+        private let lock = NSLock()
+        private var parser = SetupTokenParser()
+        private var machine = LoginStateMachine()
+        var phase: LoginPhase { lock.withLock { machine.phase } }
+        var token: String? { lock.withLock { parser.token } }
+        var masked: String { lock.withLock { parser.maskedTranscript } }
+        func output(_ data: Data) { lock.withLock { parser.consume(data).forEach { machine.handle($0) } } }
+    }
+
+    func testSimulatedSetupTokenIsCapturedAndMasked() throws {
+        let capture = Capture()
+        let pty = PseudoTerminalProcess()
+        let exited = expectation(description: "exit")
+        try pty.start(
+            executable: URL(fileURLWithPath: SetupTokenSimulator.executable),
+            arguments: SetupTokenSimulator.arguments,
+            environment: ["HOME": home.path, "PATH": "/usr/bin:/bin"],
+            currentDirectory: home,
+            columns: 500,
+            onOutput: { capture.output($0) },
+            onExit: { _ in exited.fulfill() }
+        )
+        let deadline = Date().addingTimeInterval(5)
+        while capture.phase != .waitingForCode, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        XCTAssertEqual(capture.phase, .waitingForCode, capture.masked)
+        pty.write(Data("CODE\r".utf8))
+        wait(for: [exited], timeout: 10)
+
+        XCTAssertEqual(capture.token, SetupTokenSimulator.fakeToken)
+        XCTAssertFalse(capture.masked.contains(SetupTokenSimulator.fakeToken))
+    }
+}

@@ -1,8 +1,8 @@
 import MultiCredCore
 import SwiftUI
 
-/// "Entrar no Claude" page (design 05b, terminal variation, output collapsible),
-/// shown inside the Accounts window. Back, Cancel and Done return to the list.
+/// "Entrar no Claude" page for a Claude folder's own login (design 05b, terminal
+/// variation, output collapsible). Back, Cancel and Done return to the list.
 struct LoginPage: View {
     @Bindable var session: LoginSession
     let model: AppModel
@@ -13,6 +13,7 @@ struct LoginPage: View {
     @State private var activationError: String?
 
     private var account: ClaudeAccount { session.account }
+    private var folder: String { model.folderName(account.configDir) }
     private var isOutputVisible: Bool { showOutput || session.phase.isFailure }
 
     var body: some View {
@@ -56,10 +57,10 @@ struct LoginPage: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            AccountAvatar(name: account.nickname, color: account.color, size: 40)
+            Image(systemName: "folder").font(.title2).foregroundStyle(.secondary).frame(width: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(account.nickname).font(.headline)
-                Text(account.email ?? model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment)))
+                Text("Login da pasta \(folder)").font(.headline)
+                Text("Perfis: \(profileNames)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -77,7 +78,7 @@ struct LoginPage: View {
                 .onSubmit(sendCode)
                 .disabled(session.phase.isFinished)
             if session.phase.isFailure {
-                Button("Tentar de novo") { navigator.showClaudeLogin(account, replacingTop: true) }
+                Button("Tentar de novo") { navigator.showClaudeFolderLogin(account.configDir, replacingTop: true) }
             } else {
                 Button("Conectar", action: sendCode)
                     .keyboardShortcut(.defaultAction)
@@ -106,12 +107,6 @@ struct LoginPage: View {
             Spacer()
             switch session.phase {
             case .connected:
-                Button("Ativar \(account.nickname)") {
-                    Task {
-                        activationError = await model.switchClaudeOnly(to: account.id)
-                        if activationError == nil { navigator.path = [] }
-                    }
-                }
                 Button("Concluir") { navigator.path = [] }.keyboardShortcut(.defaultAction)
             case .failed:
                 Button("Voltar") { navigator.back() }
@@ -139,7 +134,7 @@ struct LoginPage: View {
         case .simulated:
             "Simulação do modo de teste: o navegador não abre. Digite qualquer código para conectar, ou \"erro\" para ver a tela de erro."
         case .realInSandbox:
-            "Modo de teste com login real: o navegador abre e você entra numa conta de verdade, guardada numa pasta de teste. Depois do teste, use \"Sair da conta\" na lista para apagar esse login do Keychain."
+            "Modo de teste com login real: o navegador abre e você entra numa conta de verdade, guardada numa pasta de teste. Depois do teste, use \"Sair\" na página da pasta para apagar esse login do Keychain."
         case .real:
             nil
         }
@@ -148,16 +143,21 @@ struct LoginPage: View {
     private var message: String {
         switch session.phase {
         case .starting, .waitingForBrowser:
-            "O navegador vai abrir para você autorizar o Claude Code nesta conta."
+            "O navegador vai abrir. A conta em que você entrar lá vira o login desta pasta. Se o navegador já estiver logado em outra conta Claude, saia dela antes ou abra o link numa janela anônima."
         case .waitingForCode:
             "Autorize no navegador. Se ele mostrar um código, cole abaixo; se a página disser que deu certo, é só aguardar."
         case .connecting:
             "Conectando ao Claude…"
         case .connected:
-            "Pronto. Os perfis que usam \(account.nickname) já podem usar esta conta."
+            "Pronto. Os perfis que usam \(folder) entram com esta conta quando não escolhem outra conta Claude."
         case let .failed(reason):
             session.launchError ?? "Não deu certo (\(reason)). O código vale por poucos minutos: gere outro no navegador e tente de novo."
         }
+    }
+
+    private var profileNames: String {
+        let names = model.config.profiles.filter { $0.claudeConfigDir == account.configDir }.map(\.name)
+        return names.isEmpty ? "nenhum" : names.joined(separator: ", ")
     }
 
     private func sendCode() {

@@ -142,34 +142,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func claudeSubmenu() -> NSMenu {
         let submenu = NSMenu()
         let profileName = model.activeProfile?.name
-        submenu.addItem(NSMenuItem.sectionHeader(title: profileName.map { "Conta Claude · o perfil continua \($0)" } ?? "Conta Claude"))
-
+        let folder = model.activeProfile?.claudeConfigDir
+        submenu.addItem(NSMenuItem.sectionHeader(title: profileName.map { "Conta Claude · pasta \(model.folderName(folder)) (\($0)) fica" } ?? "Conta Claude"))
+        guard model.activeProfile != nil else {
+            submenu.addItem(disabled("Ative um perfil primeiro"))
+            return submenu
+        }
         let profileAccountId = model.activeProfile?.claudeAccountId
+
+        // The folder's own login.
+        let folderLoggedOut = model.folderStatus(folder) == .loggedOut
+        let own = NSMenuItem(
+            title: "Login da pasta" + (folderLoggedOut ? " · Entrar…" : ""),
+            action: folderLoggedOut ? #selector(folderLoginFromMenu) : #selector(switchClaudeFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        own.target = self
+        own.state = model.state.appliedClaudeAccountId == nil ? .on : .off
+        own.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+        var ownSubtitle = "Sem login"
+        if case let .loggedIn(email)? = model.folderStatus(folder) { ownSubtitle = email ?? "Logada" }
+        if profileAccountId == nil { ownSubtitle += " · do perfil" }
+        if #available(macOS 14.4, *) { own.subtitle = ownSubtitle } else { own.toolTip = ownSubtitle }
+        own.isEnabled = !model.isSwitching
+        submenu.addItem(own)
+
         for account in model.config.claudeAccounts {
-            let loggedOut = model.claudeStatus(account) == .loggedOut
+            let hasToken = model.hasToken(account)
             let item = NSMenuItem(
-                title: account.nickname + (loggedOut ? " · Entrar…" : ""),
-                action: loggedOut ? #selector(loginFromMenu(_:)) : #selector(switchClaudeFromMenu(_:)),
+                title: account.nickname + (hasToken ? "" : " · sem token"),
+                action: #selector(switchClaudeFromMenu(_:)),
                 keyEquivalent: ""
             )
             item.target = self
             item.representedObject = account.id
             item.state = account.id == model.state.appliedClaudeAccountId ? .on : .off
             item.image = StatusIcon.image(letter: account.nickname, color: NSColor(hex: account.color.hex), size: 16)
-            var subtitle = account.email ?? model.environment.abbreviate(ClaudePaths.effectiveDirectory(of: account, environment: model.environment))
+            var subtitle = account.email ?? "conta Claude"
             if account.id == profileAccountId { subtitle += " · do perfil" }
             if #available(macOS 14.4, *) { item.subtitle = subtitle } else { item.toolTip = subtitle }
-            item.isEnabled = !model.isSwitching
+            item.isEnabled = !model.isSwitching && hasToken
             submenu.addItem(item)
-        }
-        if model.config.claudeAccounts.isEmpty {
-            submenu.addItem(disabled("Nenhuma conta cadastrada"))
         }
         submenu.addItem(.separator())
         submenu.addItem(action("Adicionar conta Claude…", #selector(addClaudeAccount), key: "", symbol: "plus"))
         submenu.addItem(.separator())
-        submenu.addItem(disabled("Vale para novas sessões do Claude Code."))
-        submenu.addItem(disabled("Sessões já abertas continuam na conta anterior."))
+        submenu.addItem(disabled("Agents, skills e conversas não mudam."))
+        submenu.addItem(disabled("Vale para novos terminais; sessões abertas continuam."))
         return submenu
     }
 
@@ -180,14 +199,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task {
             if let error = await model.switchProfile(id) {
                 showError("Não consegui trocar para \(profile.name)", error)
-            } else if model.needsClaudeLogin(profile), let account = model.config.claudeAccount(profile.claudeAccountId) {
-                windows.showClaudeLogin(account)
+            } else if model.needsClaudeLogin(profile) {
+                if let account = model.config.claudeAccount(profile.claudeAccountId) {
+                    windows.show(.claude, then: .replaceClaudeToken(account.id))
+                } else {
+                    windows.showClaudeFolderLogin(profile.claudeConfigDir)
+                }
             }
         }
     }
 
     @objc private func switchClaudeFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID else { return }
+        // No represented object = the folder's own login.
+        let id = sender.representedObject as? UUID
         Task {
             if let error = await model.switchClaudeOnly(to: id) {
                 showError("Não consegui trocar a conta Claude", error)
@@ -195,9 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func loginFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID, let account = model.config.claudeAccount(id) else { return }
-        windows.showClaudeLogin(account)
+    @objc private func folderLoginFromMenu() {
+        windows.showClaudeFolderLogin(model.activeProfile?.claudeConfigDir)
     }
 
     @objc private func openMain() { windows.show() }

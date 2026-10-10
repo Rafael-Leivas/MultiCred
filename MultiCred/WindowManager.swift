@@ -32,9 +32,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    func showClaudeLogin(_ account: ClaudeAccount) {
+    func showClaudeFolderLogin(_ configDir: String?) {
         show()
-        navigator.showClaudeLogin(account)
+        navigator.showClaudeFolderLogin(configDir)
     }
 
     func showGitHubLogin(host: String) {

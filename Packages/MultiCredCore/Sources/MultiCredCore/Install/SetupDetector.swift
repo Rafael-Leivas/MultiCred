@@ -88,8 +88,7 @@ public struct SetupDetector: Sendable {
                 var isDirectory: ObjCBool = false
                 guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
                 let configDir = name == ".claude" ? nil : ClaudePaths.standardize(url.path)
-                let account = ClaudeAccount(nickname: name, color: .graphite, configDir: configDir)
-                return .init(configDir: configDir, status: ClaudeAccountFiles.statusFromStateFile(for: account, environment: environment))
+                return .init(configDir: configDir, status: ClaudeAccountFiles.statusFromStateFile(for: ClaudeFolder.ownLogin(configDir), environment: environment))
             }
     }
 

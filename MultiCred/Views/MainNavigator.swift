@@ -20,8 +20,14 @@ enum Route: Hashable {
     case editGit(UUID?)
     case editGitHub(UUID?)
     case githubLogin(String)
+    /// New Claude account (token).
     case addClaude
+    /// New token for an existing Claude account.
+    case replaceClaudeToken(UUID)
     case claudeAccount(UUID)
+    /// A Claude folder (nil = ~/.claude): conversations and its own login.
+    case claudeFolder(String?)
+    /// `claude auth login` for a folder; keyed by `ClaudeFolder.ownLogin(dir).id`.
     case claudeLogin(UUID)
     case editAPIKey(UUID?)
     case uninstall
@@ -59,20 +65,22 @@ final class MainNavigator {
         path.append(route)
     }
 
-    /// Opens the Claude login page, starting a fresh attempt.
-    func showClaudeLogin(_ account: ClaudeAccount, replacingTop: Bool = false) {
+    /// Opens the login page for a Claude folder's own login (`claude auth login`
+    /// with that CLAUDE_CONFIG_DIR), starting a fresh attempt.
+    func showClaudeFolderLogin(_ configDir: String?, replacingTop: Bool = false) {
+        let account = ClaudeFolder.ownLogin(configDir)
         if selection != .claude { selection = .claude }
         claudeSessions.removeValue(forKey: account.id)?.stop()
         let session = LoginSession(account: account) { [weak self] phase in
             guard let self, phase == .connected else { return }
-            Task { await self.model.refreshClaudeStatus(account.id) }
+            Task { await self.model.refreshFolderStatus(configDir) }
         }
         claudeSessions[account.id] = session
         replace(.claudeLogin(account.id), replacingTop: replacingTop)
         Task {
             switch await LoginCommand.make(for: account, model: model) {
             case let .success(command):
-                model.log.log(.info, "claude login started for \(account.nickname) (\(model.claudeLoginMode))")
+                model.log.log(.info, "claude login started for folder \(model.folderName(configDir)) (\(model.claudeLoginMode))")
                 session.start(command)
             case let .failure(error):
                 session.failToLaunch(error.message)
