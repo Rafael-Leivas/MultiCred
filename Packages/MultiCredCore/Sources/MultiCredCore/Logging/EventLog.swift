@@ -78,4 +78,13 @@ public enum Redactor {
             .sorted { $0.count > $1.count }
             .reduce(text) { $0.replacingOccurrences(of: $1, with: mask) }
     }
+
+    /// For diagnostics of CLI output: also masks anything that looks like a
+    /// credential (sk-ant-… or any run of 40+ token characters), so an
+    /// unexpected token format never reaches a log.
+    public static func redactCredentialLike(_ text: String, secrets: [String] = []) -> String {
+        redact(text, secrets: secrets)
+            .replacingOccurrences(of: #"sk-ant-[A-Za-z0-9_\-]+"#, with: mask, options: .regularExpression)
+            .replacingOccurrences(of: #"[A-Za-z0-9_\-#]{40,}"#, with: mask, options: .regularExpression)
+    }
 }

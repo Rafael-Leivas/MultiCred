@@ -132,6 +132,17 @@ public enum ClaudeAccountEditor {
 
 /// Reads the token printed by `claude setup-token`. The token is kept only to
 /// hand it to the Keychain; the visible transcript has it masked.
+/// The code the Claude authorization page shows for the manual flow
+/// ("<code>#<state>"). Used to pick it up from the clipboard; the value is only
+/// forwarded to the CLI, never stored.
+public enum AuthorizationCode {
+    public static func looksLikeCode(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 512 else { return false }
+        return trimmed.range(of: #"^[A-Za-z0-9_\-]{20,}#[A-Za-z0-9_\-]{10,}$"#, options: .regularExpression) != nil
+    }
+}
+
 public struct SetupTokenParser: Sendable {
     private var login = LoginOutputParser()
     public private(set) var token: String?

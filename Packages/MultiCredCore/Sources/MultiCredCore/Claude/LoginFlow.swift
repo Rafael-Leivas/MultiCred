@@ -86,7 +86,13 @@ public struct LoginOutputParser: Sendable {
             guard let kind = scalars.next() else { break }
             switch kind {
             case "[":
-                while let next = scalars.next(), !(0x40...0x7E).contains(next.value) {}
+                // Ink draws spaces with cursor moves ("Paste\e[8Gcode"): keep
+                // a space for cursor forward (C) and column (G) so words stay apart.
+                while let next = scalars.next() {
+                    guard (0x40...0x7E).contains(next.value) else { continue }
+                    if next == "C" || next == "G" { result.unicodeScalars.append(" ") }
+                    break
+                }
             case "]":
                 var previous: Unicode.Scalar?
                 while let next = scalars.next() {
