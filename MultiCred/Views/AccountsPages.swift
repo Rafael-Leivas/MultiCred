@@ -288,6 +288,13 @@ struct GitHubAccountEditorPage: View {
                         .disabled(accountId != nil)
                     LabeledContent("Cor") { ColorChooser(selection: $draft.color) }
                 }
+                Section {
+                    Toggle("Incluir a Claude como co-autora dos commits", isOn: $draft.claudeCoAuthor)
+                } footer: {
+                    Text(draft.claudeCoAuthor
+                         ? "Commits e PRs feitos pelo Claude Code nos perfis com esta conta terminam com \"Co-Authored-By: Claude\" (padrão do Claude Code)."
+                         : "Commits e PRs feitos pelo Claude Code nos perfis com esta conta saem só com o seu nome. O MultiCred grava isso no settings.json da pasta do Claude do perfil ao ativá-lo.")
+                }
             }
             .formStyle(.grouped)
             HStack {
@@ -297,7 +304,14 @@ struct GitHubAccountEditorPage: View {
                 Spacer()
                 Button("Cancelar") { navigator.back() }.keyboardShortcut(.cancelAction)
                 Button("Salvar") {
-                    if model.edit({ try ConfigEditor.upsert(draft, in: $0) }) { navigator.back() }
+                    let coAuthorChanged = model.config.githubAccount(draft.id)?.claudeCoAuthor != draft.claudeCoAuthor
+                    if model.edit({ try ConfigEditor.upsert(draft, in: $0) }) {
+                        // The active profile uses it: apply the co-author choice now.
+                        if coAuthorChanged, let active = model.activeProfile, active.githubAccountId == draft.id {
+                            Task { if let error = await model.switchProfile(active.id) { model.lastError = error } }
+                        }
+                        navigator.back()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(draft.nickname.isEmpty || draft.username.isEmpty)

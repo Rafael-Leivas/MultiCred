@@ -181,6 +181,11 @@ public actor SwitchEngine {
         if touchesGitAndGitHub, claudeTarget != .unchanged {
             steps.append(launchdStep(claudeTarget, launchctl: Launchctl(runner: environment.runner, baseEnvironment: childEnvironment)))
         }
+        // Claude as co-author follows the profile's GitHub account, written to
+        // the profile's Claude folder (Claude Code reads it only from settings).
+        if touchesGitAndGitHub, let profile, let github = config.githubAccount(profile.githubAccountId) {
+            steps.append(claudeSettingsStep(configDir: profile.claudeConfigDir, coAuthor: github.claudeCoAuthor))
+        }
         steps.append(envFilesStep(shellEnvironment))
         steps.append(stateStep(newState))
 
@@ -247,6 +252,35 @@ public actor SwitchEngine {
             guard previous != desired else { return {} }
             try await launchctl.apply(Self.claudeVariable, desired)
             return { try await launchctl.apply(Self.claudeVariable, previous) }
+        }
+    }
+
+    private func claudeSettingsStep(configDir: String?, coAuthor: Bool) -> SwitchStep {
+        let url = ClaudeAttribution.settingsFile(configDir: configDir, environment: environment)
+        let log = self.log
+        return SwitchStep(kind: .claudeSettings) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                return {}
+            }
+            let target = try AtomicFileWriter.resolveTarget(url, followSymlink: true)
+            let previous = try? Data(contentsOf: target)
+            let next: Data?
+            do {
+                next = try ClaudeAttribution.updated(previous, coAuthor: coAuthor)
+            } catch {
+                // A settings.json MultiCred cannot parse is left untouched.
+                log?.log(.warning, "claude settings not changed (unreadable): \(target.path)")
+                return {}
+            }
+            guard let next else { return {} }
+            // One backup of the user's original file, kept next to it.
+            let backup = target.appendingPathExtension("multicred-backup")
+            if let previous, !FileManager.default.fileExists(atPath: backup.path) {
+                try AtomicFileWriter.write(previous, to: backup, permissions: 0o600)
+            }
+            try AtomicFileWriter.write(next, to: url, permissions: 0o644, followSymlink: true)
+            return { try FileRestore.restore(previous, to: target) }
         }
     }
 

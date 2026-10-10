@@ -124,6 +124,7 @@ enum UserMessages {
         case .git: "git"
         case .github: "GitHub CLI"
         case .launchd: "variável do Claude Code (launchd)"
+        case .claudeSettings: "co-autoria da Claude (settings.json)"
         case .envFiles: "arquivos de ambiente do shell"
         case .state: "estado do perfil"
         }

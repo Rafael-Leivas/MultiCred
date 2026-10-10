@@ -487,6 +487,13 @@ final class AppModel {
     /// Claude folders and their logins are left alone; the Uninstaller deletes
     /// the Claude tokens with the other Keychain items.
     func uninstall() async -> UninstallReport {
+        // Undo the co-author opt-out MultiCred wrote (only that exact value).
+        for dir in claudeFoldersInUse {
+            let url = ClaudeAttribution.settingsFile(configDir: dir, environment: environment)
+            guard let current = try? Data(contentsOf: url),
+                  let restored = try? ClaudeAttribution.updated(current, coAuthor: true) else { continue }
+            try? AtomicFileWriter.write(restored, to: url, followSymlink: true)
+        }
         let report = await Uninstaller(environment: environment).apply()
         setOpenAtLogin(false)
         isInstalled = false

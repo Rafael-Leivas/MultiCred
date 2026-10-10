@@ -10,7 +10,7 @@ extension ToolLocator: ToolLocating {}
 
 /// Steps in the order they run. `state` is the commit point.
 public enum SwitchStepKind: String, Sendable, CaseIterable, Codable {
-    case git, github, launchd, envFiles, state
+    case git, github, launchd, claudeSettings, envFiles, state
 }
 
 public enum PreflightFailure: Error, Equatable, Sendable {

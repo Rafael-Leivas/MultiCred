@@ -54,6 +54,10 @@ que o `gh` poderia ler como opção. A validação agora exige letra ou dígito 
   (pasta 0700, arquivos 0600). Falha no meio da instalação restaura tudo que já foi escrito.
 - Bloco editado à mão (marcador sem fim): nada é escrito; o usuário recebe a instrução manual.
 - `config.json` e `state.json` 0600; nenhum segredo neles.
+- `settings.json` da pasta do Claude do perfil (D38): só a chave `attribution`, e só com o valor
+  `{"commit": "", "pr": ""}` (ou a remoção desse valor exato). Escrita atômica, symlink seguido,
+  permissões mantidas, backup único `settings.json.multicred-backup` (0600) ao lado; JSON ilegível
+  não é tocado. Faz parte da transação da troca e é desfeito no rollback.
 
 ## Keychain (risco aceito)
 

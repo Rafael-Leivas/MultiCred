@@ -130,7 +130,7 @@ final class SwitchEngineTests: SafeTestCase {
     func testSwitchToPersonalAppliesEverything() async throws {
         let result = try await engine().switchProfile(personal.id, in: config)
 
-        XCTAssertEqual(result.appliedSteps, [.git, .github, .launchd, .envFiles, .state])
+        XCTAssertEqual(result.appliedSteps, [.git, .github, .launchd, .claudeSettings, .envFiles, .state])
         XCTAssertEqual(system.ghActive, "rafaelbleivas")
         XCTAssertEqual(system.launchdClaude, claudePersonalDir)
 
@@ -247,6 +247,43 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertEqual(result?.state.profileId, personal.id)
         XCTAssertNil(result?.state.claudeOverrideId)
         XCTAssertNil(result?.state.appliedClaudeAccountId)
+    }
+
+    /// The user's case: co-author off for one GitHub account, on for the other.
+    func testClaudeCoAuthorFollowsTheProfilesGitHubAccount() async throws {
+        let settings = URL(fileURLWithPath: claudePersonalDir).appendingPathComponent("settings.json")
+        try Data(#"{"model":"opus"}"#.utf8).write(to: settings)
+        config.githubAccounts[1].claudeCoAuthor = false  // personal GitHub account
+
+        let engine = engine()
+        _ = try await engine.switchProfile(personal.id, in: config)
+        let written = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
+        XCTAssertEqual(written["attribution"] as? [String: String], ["commit": "", "pr": ""])
+        XCTAssertEqual(written["model"] as? String, "opus", "the rest of settings.json is kept")
+        XCTAssertEqual(try read(settings.appendingPathExtension("multicred-backup")), #"{"model":"opus"}"#, "original kept once")
+
+        // Switching only the Claude account never touches settings.json.
+        let before = try Data(contentsOf: settings)
+        _ = try await engine.switchClaudeOnly(to: marco.id, in: config)
+        XCTAssertEqual(try Data(contentsOf: settings), before)
+
+        // Opting back in removes only what MultiCred wrote.
+        config.githubAccounts[1].claudeCoAuthor = true
+        _ = try await engine.switchProfile(personal.id, in: config)
+        let restored = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
+        XCTAssertNil(restored["attribution"])
+        XCTAssertEqual(restored["model"] as? String, "opus")
+    }
+
+    func testCoAuthorChangeIsRolledBackWhenALaterStepFails() async throws {
+        config.githubAccounts[1].claudeCoAuthor = false
+        let settings = URL(fileURLWithPath: claudePersonalDir).appendingPathComponent("settings.json")
+        let tools = FakeTools()
+        // Make the env files step fail: its target is a directory.
+        try FileManager.default.createDirectory(at: paths.envSh, withIntermediateDirectories: true)
+        let error = await switchError { try await self.engine(tools: tools).switchProfile(self.personal.id, in: self.config) }
+        guard case .stepFailed(.envFiles, _, .complete)? = error else { return XCTFail("\(String(describing: error))") }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: settings.path), "the new settings.json was removed again")
     }
 
     func testMissingTokenIsAPreflightFailure() async throws {

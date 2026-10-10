@@ -54,13 +54,30 @@ public struct GitHubAccount: Codable, Hashable, Identifiable, Sendable {
     public var username: String
     public var host: String
     public var color: ProfileColor
+    /// Commits and PRs made by Claude Code in profiles using this account carry
+    /// Claude as co-author (Claude Code's default). Applied to the profile's
+    /// Claude folder settings.json on each profile switch.
+    public var claudeCoAuthor: Bool
 
-    public init(id: UUID = UUID(), nickname: String, username: String, host: String = "github.com", color: ProfileColor) {
+    public init(id: UUID = UUID(), nickname: String, username: String, host: String = "github.com", color: ProfileColor, claudeCoAuthor: Bool = true) {
         self.id = id
         self.nickname = nickname
         self.username = username
         self.host = host
         self.color = color
+        self.claudeCoAuthor = claudeCoAuthor
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, nickname, username, host, color, claudeCoAuthor }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        nickname = try container.decode(String.self, forKey: .nickname)
+        username = try container.decode(String.self, forKey: .username)
+        host = try container.decode(String.self, forKey: .host)
+        color = try container.decode(ProfileColor.self, forKey: .color)
+        claudeCoAuthor = try container.decodeIfPresent(Bool.self, forKey: .claudeCoAuthor) ?? true
     }
 }
 
