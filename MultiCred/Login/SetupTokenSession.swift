@@ -193,6 +193,8 @@ enum SetupTokenCommand {
             return (.failure(UserFacingError(text: "Não consegui criar a pasta temporária: \(error.localizedDescription)")), nil)
         }
         env["CLAUDE_CONFIG_DIR"] = scratch.path
+        // The page opens the link in the browser the user picked.
+        env["BROWSER"] = BrowserChoice.suppressCLIBrowser
         env["PATH"] = ([claude.deletingLastPathComponent().path] + (env["PATH"].map { [$0] } ?? [])).joined(separator: ":")
         return (.success(LoginCommand(executable: claude.path, arguments: ["setup-token"], environment: env, workingDirectory: environment.home.path)), scratch)
     }

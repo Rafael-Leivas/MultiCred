@@ -128,6 +128,8 @@ struct LoginCommand {
         )
         env["TERM"] = "xterm-256color"
         env["NO_COLOR"] = nil
+        // The login page opens the link in the browser the user picked.
+        env["BROWSER"] = BrowserChoice.suppressCLIBrowser
 
         switch model.claudeLoginMode {
         case .real:

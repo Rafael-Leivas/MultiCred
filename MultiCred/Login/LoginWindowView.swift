@@ -11,6 +11,8 @@ struct LoginPage: View {
     @State private var code = ""
     @State private var showOutput = false
     @State private var activationError: String?
+    @State private var openedURL: URL?
+    @AppStorage(BrowserChoice.storageKey) private var browserChoice = ""
 
     private var account: ClaudeAccount { session.account }
     private var folder: String { model.folderName(account.configDir) }
@@ -43,6 +45,15 @@ struct LoginPage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
+                if canOpenBrowser, !session.phase.isFinished {
+                    HStack {
+                        Text("Abriu em \(BrowserChoice.label(for: browserChoice)). Navegador errado ou outra conta logada? Copie o link e cole em outro navegador ou numa janela anônima.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        AuthorizationLinkActions(url: session.authorizationURL)
+                    }
+                }
                 codeRow
             }
             if let activationError {
@@ -53,6 +64,12 @@ struct LoginPage: View {
         }
         .padding(20)
         .navigationTitle("Entrar no Claude")
+        .onChange(of: session.authorizationURL) { _, url in
+            // The CLI does not open a browser (BROWSER is a no-op); open it here, once per link.
+            guard let url, url != openedURL, canOpenBrowser else { return }
+            openedURL = url
+            BrowserChoice.open(url, choice: browserChoice)
+        }
     }
 
     private var header: some View {
@@ -110,14 +127,7 @@ struct LoginPage: View {
                 Button("Concluir") { navigator.path = [] }.keyboardShortcut(.defaultAction)
             case .failed:
                 Button("Voltar") { navigator.back() }
-                if canOpenBrowser {
-                    Button("Abrir navegador de novo") { session.openBrowserAgain() }.keyboardShortcut(.defaultAction)
-                }
             default:
-                if canOpenBrowser {
-                    Button("Abrir navegador de novo") { session.openBrowserAgain() }
-                        .disabled(session.authorizationURL == nil)
-                }
                 Button("Cancelar") {
                     session.cancel()
                     navigator.back()

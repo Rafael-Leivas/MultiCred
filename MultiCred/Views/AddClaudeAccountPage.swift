@@ -23,6 +23,8 @@ struct AddClaudeAccountPage: View {
     @State private var saved: ClaudeAccount?
     @State private var startError: String?
     @State private var showDetails = false
+    @AppStorage(BrowserChoice.storageKey) private var browserChoice = ""
+    @State private var openedURL: URL?
 
     private var existing: ClaudeAccount? { replacing.flatMap { model.config.claudeAccount($0) } }
     private var displayName: String { existing?.nickname ?? nickname.trimmingCharacters(in: .whitespaces) }
@@ -44,6 +46,12 @@ struct AddClaudeAccountPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle(existing.map { "Novo token de \($0.nickname)" } ?? "Adicionar conta Claude")
+        .onChange(of: session?.authorizationURL) { _, url in
+            // The CLI does not open a browser (BROWSER is a no-op); open it here, once per link.
+            guard let url, url != openedURL, model.claudeLoginMode != .simulated else { return }
+            openedURL = url
+            BrowserChoice.open(url, choice: browserChoice)
+        }
         .onDisappear { session?.stop() }
     }
 
@@ -76,9 +84,11 @@ struct AddClaudeAccountPage: View {
         switch source {
         case .browser:
             VStack(alignment: .leading, spacing: 12) {
-                Text("O navegador abre na página do Claude. Entre com a conta que você quer adicionar, clique em Autorizar e copie o código mostrado. O MultiCred pega o código copiado sozinho.")
+                Text("O link do Claude abre no navegador escolhido abaixo. Entre com a conta que você quer adicionar, clique em Autorizar e copie o código mostrado. O MultiCred pega o código copiado sozinho.")
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
+                BrowserChoicePicker()
+                    .frame(maxWidth: 420)
                 if model.claudeLoginMode == .simulated {
                     Label("Modo de teste: simulação; digite qualquer código.", systemImage: "testtube.2")
                         .font(.callout).foregroundStyle(.orange)
@@ -128,19 +138,17 @@ struct AddClaudeAccountPage: View {
 
         VStack(alignment: .leading, spacing: 14) {
             StepRow(number: 1, state: step1(session), title: "Entre no navegador com a conta que você quer usar") {
-                HStack(spacing: 12) {
-                    Button("Abrir de novo") { session.openBrowserAgain() }
-                    Button("Copiar link") { session.copyLink() }
-                }
-                .buttonStyle(.link)
-                .font(.caption)
-                .disabled(session.authorizationURL == nil || model.claudeLoginMode == .simulated)
-                Text("Já está logado em outra conta Claude? Saia dela no navegador, ou cole o link numa janela anônima.")
-                    .font(.caption).foregroundStyle(.secondary)
+                EmptyView()
             }
             StepRow(number: 2, state: step2(session), title: "Clique em Autorizar e copie o código") {
                 if session.isWaitingForCode {
-                    Text("Assim que você copiar, o MultiCred envia o código e volta para a frente.")
+                    Text(linkStatus)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.claudeLoginMode != .simulated {
+                        AuthorizationLinkActions(url: session.authorizationURL)
+                    }
+                    Text("Assim que você copiar o código, o MultiCred envia e volta para a frente.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         TextField("Ou cole o código aqui", text: $code)
@@ -214,6 +222,13 @@ struct AddClaudeAccountPage: View {
         case .failed: .failed
         default: .pending
         }
+    }
+
+    private var linkStatus: String {
+        if browserChoice == BrowserChoice.copyOnly {
+            return "O link foi copiado: cole no navegador (ou janela anônima) em que você quer entrar."
+        }
+        return "O link abriu em \(BrowserChoice.label(for: browserChoice)). Abriu no navegador errado, ou já logado em outra conta? Copie o link e cole em outro navegador ou numa janela anônima."
     }
 
     private func failureText(_ reason: String) -> String {
