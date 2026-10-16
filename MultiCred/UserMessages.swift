@@ -93,6 +93,7 @@ enum UserMessages {
         case let .toolMissing(tool): "\(tool.displayName) não foi encontrado neste Mac."
         case let .claudeDirectoryMissing(path): "A pasta do Claude deste perfil não existe: \(path)"
         case let .claudeTokenMissing(nickname): "O token da conta Claude \(nickname) não está no Keychain. Gere outro em Contas › Claude."
+        case let .claudeTokenNeedsRefresh(nickname): "O token de \(nickname) foi salvo por uma versão antiga do MultiCred: o terminal não consegue lê-lo sem a senha do Mac e acaba usando o login da pasta. Em Contas › Claude › \(nickname), use \"Trocar token\" uma vez."
         case let .apiKeyMissing(nickname, envVar): "A chave \(nickname) (\(envVar)) não está no Keychain."
         case let .keychainUnavailable(reason): "Não consegui consultar o Keychain: \(reason)"
         }

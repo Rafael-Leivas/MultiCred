@@ -27,12 +27,12 @@ final class LegacyKeychainItemVerifyTests: SafeTestCase {
         let profile = Profile(name: "P", color: .orange)
         let config = Config(claudeAccounts: [marco], profiles: [profile])
         try keychain.setSecret(Data("sk-ant-oat01-x".utf8), account: marco.keychainAccount)
-        keychain.markLegacy(account: marco.keychainAccount)
         runner.on("launchctl", ["getenv"], stdout: "")
         runner.on("launchctl", ["unsetenv"])
         let engine = SwitchEngine(environment: environment, tools: FakeTools())
         _ = try await engine.switchProfile(profile.id, in: config)
         let state = try await engine.switchClaudeOnly(to: marco.id, in: config).state
+        keychain.markLegacy(account: marco.keychainAccount)  // as an item left by an older build
 
         let report = await Verifier(environment: environment, tools: FakeTools(), processes: FixedProcessScanner(sessions: 0))
             .run(config: config, state: state, checkGitHubTokens: false) { _ in .loggedOut }

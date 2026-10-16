@@ -21,6 +21,9 @@ public enum PreflightFailure: Error, Equatable, Sendable {
     case apiKeyMissing(nickname: String, envVar: String)
     /// The Claude account has no token in the Keychain.
     case claudeTokenMissing(String)
+    /// Stored by an older build: shells would need the login password to read
+    /// it and silently fall back to the folder's own login.
+    case claudeTokenNeedsRefresh(String)
     case keychainUnavailable(String)
 }
 

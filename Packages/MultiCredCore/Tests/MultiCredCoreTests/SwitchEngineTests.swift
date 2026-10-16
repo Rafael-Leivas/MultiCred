@@ -286,6 +286,17 @@ final class SwitchEngineTests: SafeTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: settings.path), "the new settings.json was removed again")
     }
 
+    /// The user's case: a token saved by an older build would make the shell
+    /// fall back silently to the folder's login; the switch must say so instead.
+    func testLegacyTokenFailsTheSwitchInsteadOfFallingBackSilently() async throws {
+        keychain.markLegacy(account: marco.keychainAccount)
+        _ = try await engine().switchProfile(personal.id, in: config)
+        let before = try read(paths.envSh)
+        let error = await switchError { try await self.engine().switchClaudeOnly(to: self.marco.id, in: self.config) }
+        XCTAssertEqual(error, .preflight(.claudeTokenNeedsRefresh("Marco")))
+        XCTAssertEqual(try read(paths.envSh), before, "nothing changed")
+    }
+
     func testMissingTokenIsAPreflightFailure() async throws {
         try keychain.deleteItem(account: marco.keychainAccount)
         _ = try await engine().switchProfile(personal.id, in: config)

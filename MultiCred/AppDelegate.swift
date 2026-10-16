@@ -169,8 +169,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         for account in model.config.claudeAccounts {
             let hasToken = model.hasToken(account)
+            let legacy = hasToken && ((try? model.environment.keychain.isLegacyItem(account: account.keychainAccount)) ?? false)
             let item = NSMenuItem(
-                title: account.nickname + (hasToken ? "" : " · sem token"),
+                title: account.nickname + (!hasToken ? " · sem token" : legacy ? " · trocar token" : ""),
                 action: #selector(switchClaudeFromMenu(_:)),
                 keyEquivalent: ""
             )

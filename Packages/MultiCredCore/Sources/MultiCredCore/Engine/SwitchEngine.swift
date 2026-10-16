@@ -167,6 +167,9 @@ public actor SwitchEngine {
         if let tokenAccount {
             let present = (try? environment.keychain.containsItem(account: tokenAccount.keychainAccount)) ?? false
             guard present else { throw SwitchError.preflight(.claudeTokenMissing(tokenAccount.nickname)) }
+            if (try? environment.keychain.isLegacyItem(account: tokenAccount.keychainAccount)) == true {
+                throw SwitchError.preflight(.claudeTokenNeedsRefresh(tokenAccount.nickname))
+            }
         }
 
         // Steps.
