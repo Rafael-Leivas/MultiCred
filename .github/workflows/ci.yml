@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test core
+        run: swift test --package-path Packages/MultiCredCore
+
+      - name: Build app (Release, unsigned)
+        run: |
+          xcodebuild -project MultiCred.xcodeproj -scheme MultiCred -configuration Release \
+            -derivedDataPath build/ci build
+
+      - name: Verify hardened runtime
+        run: |
+          APP=build/ci/Build/Products/Release/MultiCred.app
+          codesign --force --deep --options runtime --sign - "$APP"
+          codesign --verify --strict "$APP"
+          codesign -d --verbose=2 "$APP" 2>&1 | grep -q "flags=.*runtime"

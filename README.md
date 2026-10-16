@@ -5,12 +5,18 @@ do GitHub CLI, a conta do Claude Code (`CLAUDE_CONFIG_DIR`) e as chaves de API d
 
 ## Instalar
 
-```sh
-scripts/release.sh          # gera dist/MultiCred.app (ad hoc, hardened runtime)
-```
-Mova `dist/MultiCred.app` para **Aplicativos** e abra. O onboarding detecta git, gh, Claude Code,
-contas existentes e a versão antiga em `~/Perfis`, mostra o diff de cada arquivo e aplica.
-Depois, abra um novo Terminal.
+1. Baixe o `MultiCred.dmg` mais recente em [Releases](https://github.com/Rafael-Leivas/MultiCred/releases/latest).
+2. Abra o `.dmg` e arraste o MultiCred para **Aplicativos**.
+3. Abra o app. O onboarding detecta git, gh, Claude Code, contas existentes e a versão antiga em
+   `~/Perfis`, mostra o diff de cada arquivo e aplica. Depois, abra um novo Terminal.
+
+Ou, com Homebrew: `brew install --cask Rafael-Leivas/tap/multicred`.
+
+**Confira o download:** `shasum -a 256 -c SHA256SUMS.txt` e
+`gh attestation verify MultiCred.dmg --repo Rafael-Leivas/MultiCred`. O código é aberto (MIT), o app não tem
+telemetria nem chamadas de rede próprias, e a [auditoria de segurança](docs/SECURITY.md) está no repositório.
+
+Compilar você mesmo: `scripts/release.sh` gera `dist/MultiCred.app` (assinatura ad hoc, hardened runtime).
 
 Desenvolvimento: no Xcode, o esquema **MultiCred** roda em modo de teste (nada no Mac muda),
 **MultiCred (login real)** faz só o login do Claude de verdade numa pasta de teste, e
@@ -39,3 +45,7 @@ Keychain e a pasta do app; os backups vão para `MultiCred-backups-<data>`. As c
 logadas nas próprias ferramentas.
 
 Mais detalhes: `docs/PLAN.md` (decisões) e `docs/SECURITY.md` (auditoria).
+
+## Contribuir e segurança
+
+Veja [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilidades: [SECURITY.md](SECURITY.md). Licença: [MIT](LICENSE).
