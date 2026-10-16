@@ -206,7 +206,7 @@ public actor SwitchEngine {
         steps.append(envFilesStep(shellEnvironment))
         steps.append(stateStep(newState))
 
-        log?.log(.info, "switch \(transaction): start profile=\(profile?.name ?? "-") folder=\(String(describing: claudeTarget)) account=\(tokenAccount?.nickname ?? "login da pasta") steps=\(steps.map(\.kind.rawValue))")
+        log?.log(.info, "switch \(transaction): start profile=\(profile?.name ?? "-") folder=\(String(describing: claudeTarget)) account=\((tokenAccount ?? loginAccount)?.nickname ?? "login da pasta") steps=\(steps.map(\.kind.rawValue))")
         var undoStack: [(SwitchStepKind, SwitchStep.Undo)] = []
         for step in steps {
             do {

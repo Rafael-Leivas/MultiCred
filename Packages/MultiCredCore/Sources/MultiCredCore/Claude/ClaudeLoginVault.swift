@@ -166,13 +166,16 @@ public struct ClaudeLoginSwitcher: Sendable {
         // The account may be live in another folder: take it back from there.
         if let account, case let .some(other) = occupancy.folder(holding: account), other != configDir {
             undo.append(try saveBack(from: other, owner: account))
-            undo.append(try write(record: try vaultRecord(Self.ownLoginKey(other)), into: other))
+            undo.append(try restoreOwnLogin(into: other))
             occupancy.accountByFolder[ClaudeFolderOccupancy.key(other)] = nil
         }
 
         undo.append(try saveBack(from: configDir, owner: current))
-        let targetKey = account?.uuidString ?? Self.ownLoginKey(configDir)
-        undo.append(try write(record: try vaultRecord(targetKey), into: configDir))
+        if let account {
+            undo.append(try write(record: try vaultRecord(account.uuidString), into: configDir))
+        } else {
+            undo.append(try restoreOwnLogin(into: configDir))
+        }
         occupancy.accountByFolder[ClaudeFolderOccupancy.key(configDir)] = account
         try saveOccupancy(occupancy)
 
@@ -198,6 +201,32 @@ public struct ClaudeLoginSwitcher: Sendable {
         try store.writeVault(key, data: try record.encoded())
         return {
             if let previous { try store.writeVault(key, data: previous) } else { try store.deleteVault(key) }
+        }
+    }
+
+    /// Puts the folder's original login back. A folder that had no login of its
+    /// own before MultiCred put an account in it goes back to having none.
+    private func restoreOwnLogin(into configDir: String?) throws -> @Sendable () throws -> Void {
+        if let saved = try store.readVault(Self.ownLoginKey(configDir)) {
+            return try write(record: try ClaudeLoginRecord.decode(saved), into: configDir)
+        }
+        let previousItem = try store.readFolderItem(configDir: configDir)
+        if let previousItem {
+            var object = try ClaudeLoginJSON.object(previousItem)
+            object.removeValue(forKey: "claudeAiOauth")
+            try store.writeFolderItem(configDir: configDir, data: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+        }
+        let stateFile = ClaudeAccountFiles.stateFile(for: ClaudeFolder.ownLogin(configDir), environment: environment)
+        let previousState = try? Data(contentsOf: stateFile)
+        if let previousState, var state = try? ClaudeLoginJSON.object(previousState), state["oauthAccount"] != nil {
+            state.removeValue(forKey: "oauthAccount")
+            let data = try JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            try AtomicFileWriter.write(data, to: stateFile, permissions: 0o600, followSymlink: true)
+        }
+        let store = self.store
+        return {
+            if let previousItem { try store.writeFolderItem(configDir: configDir, data: previousItem) }
+            try FileRestore.restore(previousState, to: stateFile)
         }
     }
 

@@ -114,6 +114,28 @@ final class ClaudeLoginSwitchTests: SafeTestCase {
         XCTAssertEqual(try displayedEmail(personalDir), "own@x.com")
     }
 
+    /// The user's case: Dev HINC was put into a test folder that never had a
+    /// login of its own, then asked for in the work profile (~/.claude).
+    func testMovingAnAccountOutOfAFolderThatNeverHadItsOwnLogin() async throws {
+        let testDir = home.path + "/.claude-teste"
+        try FileManager.default.createDirectory(atPath: testDir, withIntermediateDirectories: true)
+        config.profiles.append(Profile(name: "Teste", color: .graphite, gitIdentityId: config.gitIdentities[0].id, claudeConfigDir: testDir, claudeAccountId: dev.id))
+        let engine = engine()
+        _ = try await engine.switchProfile(config.profiles[2].id, in: config)
+        XCTAssertEqual(try folderAccessToken(testDir), "sk-ant-oat01-dev")
+
+        _ = try await engine.switchProfile(work.id, in: config)
+        let result = try await engine.switchClaudeOnly(to: dev.id, in: config)
+        XCTAssertEqual(result.state.appliedClaudeAccountId, dev.id)
+        XCTAssertEqual(try folderAccessToken(nil), "sk-ant-oat01-dev", "dev moved to ~/.claude")
+        XCTAssertNil(try object(claudeStore.readFolderItem(configDir: testDir))["claudeAiOauth"], "the test folder is back to no login, as it was")
+        XCTAssertNil(try? displayedEmail(testDir))
+
+        // And back: ~/.claude gets its own login again.
+        _ = try await engine.switchClaudeOnly(to: ClaudeFolder.override(for: nil, profile: work), in: config)
+        XCTAssertEqual(try folderAccessToken(nil), "sk-ant-oat01-work-own")
+    }
+
     func testAFailedSwitchPutsTheOldLoginBack() async throws {
         let engine = engine()
         _ = try await engine.switchProfile(personal.id, in: config)
