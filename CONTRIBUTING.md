@@ -17,6 +17,15 @@ writes to the system must go through the existing runner and file-writing layers
 
 ## Pull requests
 
+Nobody pushes directly to `main` or `dev`, maintainers included. The flow is:
+
+1. **Fork** the repository and create a branch there (`fix/short-name` or `feat/short-name`).
+2. Open a pull request **against `dev`**. PRs against `main` are closed; `main` only receives merges from `dev`.
+3. CI must pass and a maintainer reviews. Maintainers: @Rafael-Leivas and Caio Kormives.
+4. Accepted PRs are squash-merged into `dev`. Maintainers promote `dev` to `main` with a PR and cut releases from `main`.
+
+Guidelines:
+
 - Open an issue first for anything larger than a small fix.
 - Add or update tests in `MultiCredCore` for logic changes.
 - Keep PRs focused; describe what changes for the user.
