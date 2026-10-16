@@ -13,7 +13,8 @@ public enum RealEnvironment {
             loginShell: account.shell,
             userName: account.name,
             runner: ProcessRunner(),
-            keychain: SecItemKeychainStore()
+            keychain: SecItemKeychainStore(),
+            claudeCredentials: SecurityClaudeCredentialStore(userName: account.name)
         )
     }
 

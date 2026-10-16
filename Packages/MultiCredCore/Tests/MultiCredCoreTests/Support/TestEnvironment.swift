@@ -49,6 +49,7 @@ class SafeTestCase: XCTestCase {
     private(set) var home: URL!
     private(set) var runner: FakeCommandRunner!
     private(set) var keychain: InMemoryKeychainStore!
+    private(set) var claudeStore: InMemoryClaudeCredentialStore!
     private(set) var environment: SystemEnvironment!
 
     override func setUpWithError() throws {
@@ -64,6 +65,7 @@ class SafeTestCase: XCTestCase {
 
         runner = FakeCommandRunner()
         keychain = InMemoryKeychainStore()
+        claudeStore = InMemoryClaudeCredentialStore()
         environment = SystemEnvironment(
             mode: .test,
             home: home,
@@ -71,6 +73,7 @@ class SafeTestCase: XCTestCase {
             userName: "tester",
             runner: runner,
             keychain: keychain,
+            claudeCredentials: claudeStore,
             clock: { Date(timeIntervalSince1970: 1_790_000_000) }
         )
     }

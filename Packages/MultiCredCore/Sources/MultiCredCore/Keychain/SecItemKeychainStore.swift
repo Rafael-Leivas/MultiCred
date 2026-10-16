@@ -20,13 +20,11 @@ public struct SecItemKeychainStore: KeychainStore {
     public static let legacyLabel = "MultiCred API key"
 
     private let service: String
-    private let toolPath: String
-    private let runner: any CommandRunner
+    private let tool: SecurityToolRunner
 
     public init(service: String = KeychainConstants.apiKeyService, toolPath: String = "/usr/bin/security", runner: any CommandRunner = ProcessRunner()) {
         self.service = service
-        self.toolPath = toolPath
-        self.runner = runner
+        tool = SecurityToolRunner(toolPath: toolPath, runner: runner)
     }
 
     public func setSecret(_ value: Data, account: String) throws {
@@ -103,25 +101,8 @@ public struct SecItemKeychainStore: KeychainStore {
         ]
     }
 
-    /// Runs `security` synchronously (Keychain calls are synchronous). The
-    /// runner works off the calling thread, so waiting here cannot deadlock.
     private func runTool(_ command: SecurityToolCommand) throws -> CommandResult {
-        let request = CommandRequest(
-            executable: URL(fileURLWithPath: toolPath),
-            arguments: command.arguments,
-            environment: ["PATH": "/usr/bin:/bin"],
-            standardInput: command.standardInput,
-            timeout: .seconds(15)
-        )
-        let box = ResultBox()
-        let semaphore = DispatchSemaphore(value: 0)
-        let runner = self.runner
-        Task.detached {
-            do { box.set(.success(try await runner.run(request))) } catch { box.set(.failure(error)) }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return try box.get()
+        try tool.run(command.arguments, standardInput: command.standardInput)
     }
 
     private func check(_ status: OSStatus, allowNotFound: Bool = false) throws {
@@ -133,13 +114,6 @@ public struct SecItemKeychainStore: KeychainStore {
         default: throw KeychainError.unexpectedStatus(status)
         }
     }
-}
-
-private final class ResultBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var result: Result<CommandResult, any Error> = .failure(KeychainError.toolFailed("no result"))
-    func set(_ value: Result<CommandResult, any Error>) { lock.withLock { result = value } }
-    func get() throws -> CommandResult { try lock.withLock { try result.get() } }
 }
 
 /// `security` invocations, kept pure so tests can check that a secret never

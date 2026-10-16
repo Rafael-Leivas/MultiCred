@@ -2,10 +2,11 @@ import AppKit
 import MultiCredCore
 import Observation
 
-/// One `claude setup-token` run in a pseudo-terminal, in a throwaway config
-/// folder so no profile folder is touched. The browser decides which Claude
-/// account the token belongs to. The token is handed to `onToken` once (it goes
-/// straight to the Keychain) and never shown: the visible output is masked.
+/// One `claude auth login` (full login, D39) or `claude setup-token` (token)
+/// run in a pseudo-terminal, in a throwaway config folder so no profile folder
+/// is touched. The browser decides which Claude account it is. A token is handed
+/// to `onToken`; a login is captured from the throwaway folder by `onLogin`
+/// before that folder is removed. Nothing secret is ever shown.
 ///
 /// The authorization page shows a code to copy (there is no redirect back to
 /// the app). While waiting for it, the clipboard is watched: when a copied text
@@ -13,7 +14,10 @@ import Observation
 @MainActor
 @Observable
 final class SetupTokenSession {
+    enum Mode { case login, setupToken }
+
     static let stallAfter: Duration = .seconds(25)
+    let mode: Mode
 
     private(set) var machine = LoginStateMachine()
     private(set) var output = ""
@@ -32,6 +36,8 @@ final class SetupTokenSession {
     @ObservationIgnored private var stallTask: Task<Void, Never>?
     @ObservationIgnored private var logged = false
     @ObservationIgnored private let onToken: (String) -> Void
+    /// Login mode: reads the login from the throwaway folder; true = saved.
+    @ObservationIgnored private let onLogin: (URL?) -> Bool
     @ObservationIgnored private let cleanup: (URL) -> Void
     @ObservationIgnored private let log: (String) -> Void
 
@@ -39,8 +45,11 @@ final class SetupTokenSession {
     var authorizationURL: URL? { machine.authorizationURL }
     var isWaitingForCode: Bool { !phase.isFinished && phase != .connecting }
 
-    init(onToken: @escaping (String) -> Void, cleanup: @escaping (URL) -> Void, log: @escaping (String) -> Void) {
+    init(mode: Mode, onToken: @escaping (String) -> Void = { _ in }, onLogin: @escaping (URL?) -> Bool = { _ in false },
+         cleanup: @escaping (URL) -> Void, log: @escaping (String) -> Void) {
+        self.mode = mode
         self.onToken = onToken
+        self.onLogin = onLogin
         self.cleanup = cleanup
         self.log = log
     }
@@ -106,7 +115,9 @@ final class SetupTokenSession {
     }
 
     private func received(_ data: Data) {
-        let events = parser.consume(data)
+        // Login mode: "Login successful" comes before the process exits; the step
+        // is done only once the login is saved (at exit), so success is held back.
+        let events = parser.consume(data).filter { mode == .setupToken || $0 != .succeeded }
         output = Redactor.redactCredentialLike(parser.maskedTranscript, secrets: sentCodes)
         events.forEach { machine.handle($0) }
         if phase.isFinished { stallTask?.cancel(); stalled = false }
@@ -115,6 +126,22 @@ final class SetupTokenSession {
     }
 
     private func exited(_ status: Int32) {
+        if mode == .login {
+            clipboardTask?.cancel()
+            stallTask?.cancel()
+            stalled = false
+            if status == 0, onLogin(scratch) {
+                tokenCaptured = true
+                machine.handle(.succeeded)
+                log("auth login: login saved (kept only in the Keychain)")
+            } else {
+                machine.processExited(status: status == 0 ? 1 : status)
+                if status == 0 { launchError = "O login terminou, mas não encontrei a credencial. Tente de novo." }
+                writeLog(reason: "auth login exited \(status) without a saved login")
+            }
+            removeScratch()
+            return
+        }
         deliverTokenIfReady()
         clipboardTask?.cancel()
         stallTask?.cancel()
@@ -130,7 +157,7 @@ final class SetupTokenSession {
     }
 
     private func deliverTokenIfReady() {
-        guard !tokenCaptured, let token = parser.token else { return }
+        guard mode == .setupToken, !tokenCaptured, let token = parser.token else { return }
         tokenCaptured = true
         clipboardTask?.cancel()
         stallTask?.cancel()
@@ -176,12 +203,15 @@ final class SetupTokenSession {
 enum SetupTokenCommand {
     /// Real modes: `claude setup-token` with a throwaway CLAUDE_CONFIG_DIR.
     /// Test mode (simulated): a script that prints a fake token.
-    static func make(model: AppModel) async -> (Result<LoginCommand, UserFacingError>, URL?) {
+    static func make(model: AppModel, mode: SetupTokenSession.Mode) async -> (Result<LoginCommand, UserFacingError>, URL?) {
         let environment = model.environment
         var env = environment.baseProcessEnvironment(path: await model.tools.searchDirectories())
         env["TERM"] = "xterm-256color"
         if model.claudeLoginMode == .simulated {
-            return (.success(LoginCommand(executable: SetupTokenSimulator.executable, arguments: SetupTokenSimulator.arguments, environment: env, workingDirectory: environment.home.path)), nil)
+            let (executable, arguments) = mode == .login
+                ? (LoginSimulator.executable, LoginSimulator.arguments)
+                : (SetupTokenSimulator.executable, SetupTokenSimulator.arguments)
+            return (.success(LoginCommand(executable: executable, arguments: arguments, environment: env, workingDirectory: environment.home.path)), nil)
         }
         guard let claude = await model.claudeLocator.locate(.claude) else {
             return (.failure(UserFacingError(text: LoginLaunchError.claudeNotInstalled.message)), nil)
@@ -196,6 +226,7 @@ enum SetupTokenCommand {
         // The page opens the link in the browser the user picked.
         env["BROWSER"] = BrowserChoice.suppressCLIBrowser
         env["PATH"] = ([claude.deletingLastPathComponent().path] + (env["PATH"].map { [$0] } ?? [])).joined(separator: ":")
-        return (.success(LoginCommand(executable: claude.path, arguments: ["setup-token"], environment: env, workingDirectory: environment.home.path)), scratch)
+        let arguments = mode == .login ? ["auth", "login"] : ["setup-token"]
+        return (.success(LoginCommand(executable: claude.path, arguments: arguments, environment: env, workingDirectory: environment.home.path)), scratch)
     }
 }

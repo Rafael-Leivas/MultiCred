@@ -44,7 +44,7 @@ struct ClaudeAccountsPage: View {
                             .onTapGesture { navigator.push(.claudeAccount(account.id)) }
                             .contextMenu {
                                 Button("Usar agora no perfil ativo") { useNow(account.id) }
-                                Button("Trocar token…") { navigator.push(.replaceClaudeToken(account.id)) }
+                                Button("Entrar de novo…") { navigator.push(.replaceClaudeToken(account.id)) }
                                 Divider()
                                 Button("Remover conta…", role: .destructive) { pendingRemoval = account }
                             }
@@ -100,7 +100,8 @@ struct ClaudeAccountsPage: View {
             name: account.nickname, color: account.color, title: account.nickname,
             subtitle: account.email ?? "conta Claude",
             usedIn: usedIn(model.profilesUsing(claudeAccount: account.id)),
-            detail: model.hasToken(account) ? "token no Keychain" : "sem token"
+            detail: account.kind == .login ? "login completo · troca até nas conversas abertas"
+                : model.hasToken(account) ? "token · só terminais novos" : "sem token"
         ) {
             VStack(alignment: .trailing, spacing: 4) {
                 if inUse {
@@ -238,7 +239,8 @@ struct ClaudeAccountDetailPage: View {
                     if model.state.appliedClaudeAccountId == account.id {
                         StatusPill(text: "Em uso", tone: .ok)
                     } else {
-                        StatusPill(text: model.hasToken(account) ? "Token salvo" : "Sem token", tone: model.hasToken(account) ? .ok : .error)
+                        StatusPill(text: account.kind == .login ? "Login salvo" : model.hasToken(account) ? "Token salvo" : "Sem token",
+                                   tone: model.hasToken(account) ? .ok : .error)
                     }
                 }
                 let used = model.profilesUsing(claudeAccount: account.id).map(\.name)
@@ -251,7 +253,7 @@ struct ClaudeAccountDetailPage: View {
                 Spacer(minLength: 0)
                 HStack {
                     Button("Remover conta…", role: .destructive) { pendingRemoval = account }.foregroundStyle(.red)
-                    Button("Trocar token…") { navigator.push(.replaceClaudeToken(account.id)) }
+                    Button("Entrar de novo…") { navigator.push(.replaceClaudeToken(account.id)) }
                     Spacer()
                     Button("Usar agora") {
                         Task { if let error = await model.switchClaudeOnly(to: account.id) { model.lastError = error } }

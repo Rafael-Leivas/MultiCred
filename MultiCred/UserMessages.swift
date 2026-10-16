@@ -17,6 +17,13 @@ enum UserMessages {
         case let error as InstallError: describe(error)
         case let error as FileWriteError: error.description
         case let error as KeychainError: "Keychain: \(error.description)"
+        case let error as ClaudeLoginError:
+            switch error {
+            case .noLoginInFolder: "O Claude Code terminou o login, mas não encontrei a credencial dele no Keychain. Tente de novo."
+            case .vaultEntryMissing: "O login guardado desta conta sumiu do Keychain. Use \"Entrar de novo\" na conta."
+            case let .unreadable(what): "Não consegui ler a credencial do Claude Code (\(what))."
+            case let .securityFailed(reason): "O Keychain recusou a operação: \(reason.isEmpty ? "erro desconhecido" : reason)"
+            }
         case is GitHubCLIError: "O GitHub CLI respondeu algo inesperado."
         default: String(describing: error)
         }
@@ -93,6 +100,7 @@ enum UserMessages {
         case let .toolMissing(tool): "\(tool.displayName) não foi encontrado neste Mac."
         case let .claudeDirectoryMissing(path): "A pasta do Claude deste perfil não existe: \(path)"
         case let .claudeTokenMissing(nickname): "O token da conta Claude \(nickname) não está no Keychain. Gere outro em Contas › Claude."
+        case let .claudeLoginMissing(nickname): "O login da conta Claude \(nickname) não está no Keychain. Em Contas › Claude › \(nickname), use \"Entrar de novo\"."
         case let .claudeTokenNeedsRefresh(nickname): "O token de \(nickname) foi salvo por uma versão antiga do MultiCred: o terminal não consegue lê-lo sem a senha do Mac e acaba usando o login da pasta. Em Contas › Claude › \(nickname), use \"Trocar token\" uma vez."
         case let .apiKeyMissing(nickname, envVar): "A chave \(nickname) (\(envVar)) não está no Keychain."
         case let .keychainUnavailable(reason): "Não consegui consultar o Keychain: \(reason)"
@@ -126,6 +134,7 @@ enum UserMessages {
         case .github: "GitHub CLI"
         case .launchd: "variável do Claude Code (launchd)"
         case .claudeSettings: "co-autoria da Claude (settings.json)"
+        case .claudeLogin: "login da conta Claude na pasta (Keychain)"
         case .envFiles: "arquivos de ambiente do shell"
         case .state: "estado do perfil"
         }

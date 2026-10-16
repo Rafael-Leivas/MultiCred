@@ -23,6 +23,8 @@ public struct SystemEnvironment: Sendable {
     public let userName: String
     public let runner: any CommandRunner
     public let keychain: any KeychainStore
+    /// Claude Code's folder credential items and MultiCred's login vault (D39).
+    public let claudeCredentials: any ClaudeCredentialStore
     public let clock: @Sendable () -> Date
 
     public init(
@@ -32,6 +34,7 @@ public struct SystemEnvironment: Sendable {
         userName: String,
         runner: any CommandRunner,
         keychain: any KeychainStore,
+        claudeCredentials: any ClaudeCredentialStore = InMemoryClaudeCredentialStore(),
         clock: @escaping @Sendable () -> Date = Date.init
     ) {
         self.mode = mode
@@ -40,6 +43,7 @@ public struct SystemEnvironment: Sendable {
         self.userName = userName
         self.runner = runner
         self.keychain = keychain
+        self.claudeCredentials = claudeCredentials
         self.clock = clock
     }
 

@@ -80,9 +80,16 @@ Verificar aponta esses itens; salvar o valor de novo recria o item no esquema no
 
 ## Tokens das ferramentas
 
-- Claude Code, login da pasta: o app só define/remove `CLAUDE_CONFIG_DIR`, roda
-  `claude auth login/status/logout` e lê `oauthAccount.emailAddress` do `.claude.json` (sem token).
-  Nunca acessa os itens `Claude Code-credentials*` do Keychain.
+- Claude Code, login da pasta: o app define/remove `CLAUDE_CONFIG_DIR`, roda
+  `claude auth login/status/logout` e lê `oauthAccount` do `.claude.json`.
+- Claude Code, contas de login completo (D39, exceção autorizada pelo usuário em 2026-10-16): o app
+  lê e grava, via `/usr/bin/security`, o item `Claude Code-credentials…` da pasta do perfil, mas
+  troca **só** a chave `claudeAiOauth` (os logins de MCP no mesmo item ficam). Os logins ficam no
+  cofre `app.multicred.claude-login` (conta = UUID da conta ou chave do login original da pasta),
+  com o mesmo risco aceito das chaves de API. Nada disso aparece na tela, no log ou em arquivos;
+  valores vão ao `security -i` pela entrada padrão, em hexadecimal. A troca é transacional (desfeita
+  se outro passo falhar) e guarda de volta o login vivo antes de substituí-lo, porque os tokens de
+  renovação giram. A desinstalação devolve o login original a cada pasta e esvazia o cofre.
 - Claude Code, contas Claude (D37, exceção aprovada pelo usuário): o token gerado por
   `claude setup-token` (rodado num pseudo-terminal com uma pasta temporária, apagada no fim) ou
   colado pelo usuário vai direto para o Keychain, no mesmo serviço das chaves de API e com o mesmo

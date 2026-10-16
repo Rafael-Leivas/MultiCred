@@ -10,7 +10,7 @@ extension ToolLocator: ToolLocating {}
 
 /// Steps in the order they run. `state` is the commit point.
 public enum SwitchStepKind: String, Sendable, CaseIterable, Codable {
-    case git, github, launchd, claudeSettings, envFiles, state
+    case git, github, launchd, claudeSettings, claudeLogin, envFiles, state
 }
 
 public enum PreflightFailure: Error, Equatable, Sendable {
@@ -24,6 +24,8 @@ public enum PreflightFailure: Error, Equatable, Sendable {
     /// Stored by an older build: shells would need the login password to read
     /// it and silently fall back to the folder's own login.
     case claudeTokenNeedsRefresh(String)
+    /// A login account whose login is not in MultiCred's vault.
+    case claudeLoginMissing(String)
     case keychainUnavailable(String)
 }
 

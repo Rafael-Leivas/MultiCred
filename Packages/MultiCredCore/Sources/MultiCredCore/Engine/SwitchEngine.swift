@@ -117,12 +117,16 @@ public actor SwitchEngine {
         let claudeTarget: ClaudeTarget = profile.map { $0.claudeConfigDir.map(ClaudeTarget.directory) ?? .defaultAccount } ?? .unchanged
         let chosen = override == ClaudeFolder.ownLoginOverride ? nil : (override ?? profile?.claudeAccountId)
         let tokenAccount = config.claudeAccount(chosen).flatMap { $0.kind == .token ? $0 : nil }
+        let loginAccount = config.claudeAccount(chosen).flatMap { $0.kind == .login ? $0 : nil }
+        // The folder whose credential item a login account goes into.
+        let profileFolder: String?? = profile.map { $0.claudeConfigDir }
+        let loginSwitcher = ClaudeLoginSwitcher(environment: environment, store: environment.claudeCredentials)
 
         let now = environment.clock()
         let newState = ActiveState(
             profileId: profileId,
             claudeOverrideId: override,
-            appliedClaudeAccountId: tokenAccount?.id,
+            appliedClaudeAccountId: tokenAccount?.id ?? loginAccount?.id,
             activatedAt: operation.startsNewActivation ? now : (previous.activatedAt ?? now),
             generation: previous.generation + 1
         )
@@ -164,6 +168,10 @@ public actor SwitchEngine {
             }
             guard present else { throw SwitchError.preflight(.apiKeyMissing(nickname: key.nickname, envVar: key.envVar)) }
         }
+        if let loginAccount {
+            let present = ((try? environment.claudeCredentials.readVault(loginAccount.id.uuidString)) ?? nil) != nil
+            guard present else { throw SwitchError.preflight(.claudeLoginMissing(loginAccount.nickname)) }
+        }
         if let tokenAccount {
             let present = (try? environment.keychain.containsItem(account: tokenAccount.keychainAccount)) ?? false
             guard present else { throw SwitchError.preflight(.claudeTokenMissing(tokenAccount.nickname)) }
@@ -188,6 +196,12 @@ public actor SwitchEngine {
         // the profile's Claude folder (Claude Code reads it only from settings).
         if touchesGitAndGitHub, let profile, let github = config.githubAccount(profile.githubAccountId) {
             steps.append(claudeSettingsStep(configDir: profile.claudeConfigDir, coAuthor: github.claudeCoAuthor))
+        }
+        // Login accounts live in the folder's own credential item; leaving one
+        // (another account or the folder's own login chosen) puts it back.
+        if case let .some(folder) = profileFolder,
+           loginAccount != nil || loginSwitcher.occupancy().account(in: folder) != nil {
+            steps.append(claudeLoginStep(loginSwitcher, account: loginAccount?.id, folder: folder))
         }
         steps.append(envFilesStep(shellEnvironment))
         steps.append(stateStep(newState))
@@ -284,6 +298,13 @@ public actor SwitchEngine {
             }
             try AtomicFileWriter.write(next, to: url, permissions: 0o644, followSymlink: true)
             return { try FileRestore.restore(previous, to: target) }
+        }
+    }
+
+    private func claudeLoginStep(_ switcher: ClaudeLoginSwitcher, account: UUID?, folder: String?) -> SwitchStep {
+        SwitchStep(kind: .claudeLogin) {
+            let undo = try switcher.place(account, in: folder)
+            return { try undo() }
         }
     }
 

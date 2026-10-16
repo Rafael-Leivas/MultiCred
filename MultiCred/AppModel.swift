@@ -112,7 +112,14 @@ final class AppModel {
     }
 
     func hasToken(_ account: ClaudeAccount) -> Bool {
-        (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
+        // Login accounts live in the login vault; reading it on every render
+        // would spawn `security`, so the switch preflight checks it instead.
+        if account.kind == .login { return true }
+        return (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
+    }
+
+    var claudeLogins: ClaudeLoginSwitcher {
+        ClaudeLoginSwitcher(environment: environment, store: environment.claudeCredentials)
     }
 
     func githubLogin(for account: GitHubAccount) -> GitHubLogin? {
@@ -286,7 +293,82 @@ final class AppModel {
         }
     }
 
+    // MARK: Login accounts (live switching, D39)
+
+    /// The login `claude auth login` left in a throwaway folder. Test mode
+    /// (simulated) has no real login: a fake one is made, kept only in memory.
+    private func capturedLogin(scratch: URL?) throws -> ClaudeLoginRecord {
+        if claudeLoginMode == .simulated || scratch == nil {
+            let oauth = Data(#"{"accessToken":"sk-ant-oat01-SIMULADO","refreshToken":"sk-ant-ort01-SIMULADO","expiresAt":0,"scopes":["user:inference"]}"#.utf8)
+            return ClaudeLoginRecord(oauth: oauth, account: Data(#"{"emailAddress":"simulado@exemplo.com"}"#.utf8))
+        }
+        return try claudeLogins.capture(fromScratch: scratch!.path)
+    }
+
+    /// Deletes the throwaway folder and the keychain item Claude Code made for it.
+    func discardScratchLogin(_ scratch: URL) {
+        guard scratch.lastPathComponent.hasPrefix("setup-token-") else { return }
+        try? environment.claudeCredentials.deleteFolderItem(configDir: scratch.path)
+        try? FileManager.default.removeItem(at: scratch)
+    }
+
+    @discardableResult
+    func addClaudeLoginAccount(nickname: String, email: String?, color: ProfileColor, scratch: URL?) -> ClaudeAccount? {
+        do {
+            let record = try capturedLogin(scratch: scratch)
+            let trimmed = nickname.trimmingCharacters(in: .whitespaces)
+            let account = ClaudeAccount(nickname: trimmed, email: record.email ?? email, color: color, kind: .login)
+            try claudeLogins.storeNewAccount(account.id, record: record)
+            var updated = config
+            updated.claudeAccounts.append(account)
+            do {
+                try repository.save(updated)
+            } catch {
+                try? environment.claudeCredentials.deleteVault(account.id.uuidString)
+                throw error
+            }
+            config = updated
+            log.log(.info, "claude login account added: \(account.nickname)")
+            return account
+        } catch {
+            lastError = UserMessages.describe(error)
+            log.log(.error, "claude login account not added: \(error)")
+            return nil
+        }
+    }
+
+    /// Signs an existing account in again. A token account becomes a login
+    /// account (live switching) and its old token is deleted.
+    func replaceClaudeLogin(of account: ClaudeAccount, scratch: URL?) -> Bool {
+        do {
+            let record = try capturedLogin(scratch: scratch)
+            try claudeLogins.replaceLogin(account.id, record: record)
+            if account.kind != .login {
+                var updated = account
+                updated.kind = .login
+                if updated.email == nil { updated.email = record.email }
+                guard edit({ try ConfigEditor.updateClaudeAccount(updated, in: $0) }) else { return false }
+                try? environment.keychain.deleteItem(account: account.keychainAccount)
+                // A live token must stop being exported; the login takes over.
+                if state.appliedClaudeAccountId == account.id { Task { await switchClaudeOnly(to: account.id) } }
+            }
+            log.log(.info, "claude login replaced: \(account.nickname)")
+            return true
+        } catch {
+            lastError = UserMessages.describe(error)
+            log.log(.error, "claude login not replaced: \(error)")
+            return false
+        }
+    }
+
     func removeClaudeAccount(_ accountId: UUID) {
+        if config.claudeAccount(accountId)?.kind == .login {
+            // If it is live in a folder, that folder gets its own login back.
+            do { try claudeLogins.removeAccount(accountId) } catch {
+                lastError = UserMessages.describe(error)
+                return
+            }
+        }
         let wasApplied = state.appliedClaudeAccountId == accountId
         guard edit({ ClaudeAccountEditor.remove(accountId, from: $0, keychain: environment.keychain) }) else { return }
         // Shells must stop exporting a token that no longer exists.
@@ -493,6 +575,18 @@ final class AppModel {
             guard let current = try? Data(contentsOf: url),
                   let restored = try? ClaudeAttribution.updated(current, coAuthor: true) else { continue }
             try? AtomicFileWriter.write(restored, to: url, followSymlink: true)
+        }
+        // Folders holding a MultiCred login get their own login back; then the
+        // login vault is emptied (accounts and saved own logins).
+        let switcher = claudeLogins
+        for key in switcher.occupancy().accountByFolder.keys {
+            try? switcher.place(nil, in: key == "~/.claude" ? nil : key)
+        }
+        for account in config.claudeAccounts where account.kind == .login {
+            try? environment.claudeCredentials.deleteVault(account.id.uuidString)
+        }
+        for dir in claudeFoldersInUse {
+            try? environment.claudeCredentials.deleteVault(ClaudeLoginSwitcher.ownLoginKey(dir))
         }
         let report = await Uninstaller(environment: environment).apply()
         setOpenAtLogin(false)

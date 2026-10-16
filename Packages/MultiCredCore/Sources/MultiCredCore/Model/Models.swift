@@ -87,6 +87,10 @@ public enum ClaudeAccountKind: String, Codable, Sendable {
     /// `CLAUDE_CODE_OAUTH_TOKEN`; the Claude folder (agents, skills, chats)
     /// belongs to the profile and does not change.
     case token
+    /// A full claude.ai login (D39), kept in MultiCred's login vault and placed
+    /// into the profile folder's own credential item, like `/login` does, so
+    /// sessions already open switch too.
+    case login
     /// Config v1 only: an account was a whole `CLAUDE_CONFIG_DIR` folder.
     /// Migrated into the profiles' folders on load (`ConfigMigration`).
     case folder

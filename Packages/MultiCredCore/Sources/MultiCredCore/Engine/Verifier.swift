@@ -128,15 +128,17 @@ public struct Verifier: Sendable {
                 origin: ok ? nil : "launchctl", fix: ok ? nil : .reapplyProfile
             ))
             if let account = config.claudeAccount(state.appliedClaudeAccountId) {
-                let present = (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
-                let legacy = present && ((try? environment.keychain.isLegacyItem(account: account.keychainAccount)) ?? false)
+                let present = account.kind == .login
+                    ? ((try? environment.claudeCredentials.readVault(account.id.uuidString)) ?? nil) != nil
+                    : (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
+                let legacy = account.kind == .token && present && ((try? environment.keychain.isLegacyItem(account: account.keychainAccount)) ?? false)
                 let email = account.email.map { " · \($0)" } ?? ""
                 items.append(CheckItem(
                     id: "claude.login", section: .tools, title: "Claude Code · conta",
                     status: !present ? .error : (legacy ? .warning : .ok),
-                    detail: !present ? "\(account.nickname): token não está no Keychain"
+                    detail: !present ? "\(account.nickname): \(account.kind == .login ? "login" : "token") não está no Keychain"
                         : legacy ? "\(account.nickname): os terminais pedem a senha do Mac para ler o token; gere ou cole o token de novo"
-                        : "\(account.nickname)\(email) (token no Keychain), pasta \(folderName)",
+                        : "\(account.nickname)\(email) (\(account.kind == .login ? "login completo" : "token") no Keychain), pasta \(folderName)",
                     expected: nil, origin: nil,
                     fix: present && !legacy ? nil : .loginClaude(account.id)
                 ))

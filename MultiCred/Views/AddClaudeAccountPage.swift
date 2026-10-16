@@ -45,7 +45,7 @@ struct AddClaudeAccountPage: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .navigationTitle(existing.map { "Novo token de \($0.nickname)" } ?? "Adicionar conta Claude")
+        .navigationTitle(existing.map { "Entrar de novo em \($0.nickname)" } ?? "Adicionar conta Claude")
         .onChange(of: session?.authorizationURL) { _, url in
             // The CLI does not open a browser (BROWSER is a no-op); open it here, once per link.
             guard let url, url != openedURL, model.claudeLoginMode != .simulated else { return }
@@ -58,7 +58,7 @@ struct AddClaudeAccountPage: View {
     // MARK: Before starting
 
     @ViewBuilder private var setup: some View {
-        Text("Uma conta Claude é só o login. Usada num perfil, ela mantém os agents, skills e conversas da pasta do perfil.")
+        Text("Uma conta Claude é só o login. Usada num perfil, ela mantém os agents, skills e conversas da pasta do perfil, e a troca vale até nas conversas já abertas.")
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -74,17 +74,19 @@ struct AddClaudeAccountPage: View {
             .padding(.horizontal, -20)
         }
 
+        if existing == nil {
         Picker("", selection: $source) {
             Text("Entrar pelo navegador").tag(Source.browser)
             Text("Já tenho um token").tag(Source.paste)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        }
 
         switch source {
         case .browser:
             VStack(alignment: .leading, spacing: 12) {
-                Text("O link do Claude abre no navegador escolhido abaixo. Entre com a conta que você quer adicionar, clique em Autorizar e copie o código mostrado. O MultiCred pega o código copiado sozinho.")
+                Text("O link do Claude abre no navegador escolhido abaixo. Entre com a conta que você quer adicionar, clique em Autorizar e copie o código mostrado. O MultiCred pega o código copiado sozinho e guarda o login no Keychain.")
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                 BrowserChoicePicker()
@@ -104,7 +106,7 @@ struct AddClaudeAccountPage: View {
             }
         case .paste:
             VStack(alignment: .leading, spacing: 12) {
-                Text("Se você já rodou \"claude setup-token\" num terminal, cole o token (começa com sk-ant-oat).")
+                Text("Se você já rodou \"claude setup-token\" num terminal, cole o token (começa com sk-ant-oat). Um token vale só para terminais novos: as conversas já abertas não trocam.")
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                 SecureField("sk-ant-oat01-…", text: $pasted)
@@ -162,11 +164,11 @@ struct AddClaudeAccountPage: View {
                     Text("Código copiado recebido.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            StepRow(number: 3, state: step3(session), title: "Gerar o token") {
+            StepRow(number: 3, state: step3(session), title: "Salvar o login") {
                 if session.phase == .connecting {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Gerando o token…").font(.caption).foregroundStyle(.secondary)
+                        Text("Concluindo o login…").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if session.stalled {
@@ -242,9 +244,11 @@ struct AddClaudeAccountPage: View {
 
     private func done(_ account: ClaudeAccount) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(existing != nil ? "Token de \(account.nickname) trocado." : "Conta \(account.nickname) adicionada.", systemImage: "checkmark.circle.fill")
+            Label(existing != nil ? "Login de \(account.nickname) atualizado." : "Conta \(account.nickname) adicionada.", systemImage: "checkmark.circle.fill")
                 .font(.title3).foregroundStyle(.green)
-            Text("O token está só no Keychain. Escolha esta conta no editor de um perfil, ou use agora no perfil ativo sem trocar de pasta.")
+            Text(account.kind == .login
+                 ? "O login está só no Keychain. Use agora no perfil ativo: a pasta continua a mesma e até as conversas já abertas passam para esta conta."
+                 : "O token está só no Keychain. Vale para terminais novos; escolha esta conta no editor de um perfil ou use agora no perfil ativo.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
@@ -268,20 +272,20 @@ struct AddClaudeAccountPage: View {
         startError = nil
         session?.stop()
         let log = model.log
+        let model = self.model
+        // The browser flow is a full login (live switching, D39).
         let new = SetupTokenSession(
-            onToken: { token in save(token: token) },
-            cleanup: { url in
-                // Only the throwaway folder created for this run.
-                if url.lastPathComponent.hasPrefix("setup-token-") { try? FileManager.default.removeItem(at: url) }
-            },
+            mode: .login,
+            onLogin: { scratch in saveLogin(scratch: scratch) },
+            cleanup: { url in model.discardScratchLogin(url) },
             log: { log.log(.info, $0) }
         )
         session = new
         Task {
-            let (command, scratch) = await SetupTokenCommand.make(model: model)
+            let (command, scratch) = await SetupTokenCommand.make(model: model, mode: .login)
             switch command {
             case let .success(command):
-                model.log.log(.info, "setup-token started for \(displayName) (\(model.claudeLoginMode))")
+                model.log.log(.info, "auth login started for \(displayName) (\(model.claudeLoginMode))")
                 new.start(command, scratchFolder: scratch)
             case let .failure(error):
                 startError = error.text
@@ -293,6 +297,18 @@ struct AddClaudeAccountPage: View {
     private func sendCode() {
         session?.submit(code: code)
         code = ""
+    }
+
+    private func saveLogin(scratch: URL?) -> Bool {
+        if let existing {
+            guard model.replaceClaudeLogin(of: existing, scratch: scratch) else { return false }
+            saved = model.config.claudeAccount(existing.id) ?? existing
+        } else {
+            let mail = email.trimmingCharacters(in: .whitespaces)
+            guard let account = model.addClaudeLoginAccount(nickname: nickname, email: mail.isEmpty ? nil : mail, color: color, scratch: scratch) else { return false }
+            saved = account
+        }
+        return true
     }
 
     private func save(token: String) {
