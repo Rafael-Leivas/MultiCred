@@ -75,7 +75,7 @@ final class SetupTokenSession {
         guard !trimmed.isEmpty, machine.phase.acceptsCode else { return }
         sentCodes.append(trimmed)
         codeFromClipboard = fromClipboard
-        pty.write(Data((trimmed + "\r").utf8))
+        pty.submitLine(trimmed)
         machine.codeSubmitted()
         stalled = false
         stallTask?.cancel()

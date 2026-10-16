@@ -48,7 +48,9 @@ final class RealSetupTokenProbeTests: XCTestCase {
         }
         run(until: { capture.phase == .waitingForCode }, seconds: 15)
         print("PHASE BEFORE CODE:", capture.phase)
-        pty.write(Data("FAKECODE123#fakestate456\r".utf8))
+        // Real codes are ~90 characters; sent with code + "\r" in one write,
+        // Claude Code 2.1.301 swallows the Enter. submitLine must get an answer.
+        pty.submitLine("BfakeAbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefg#fakeSTATEabcdefghijklmnopqrstuvwxyz0123456789ABCDE")
         capture.codeSent()
         run(until: { capture.phase.isFinished }, seconds: 15)
         print("PHASE AFTER CODE:", capture.phase)

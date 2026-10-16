@@ -70,7 +70,7 @@ final class LoginSession {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, machine.phase.acceptsCode else { return }
         sentCodes.append(trimmed)
-        pty.write(Data((trimmed + "\r").utf8))
+        pty.submitLine(trimmed)
         update { $0.codeSubmitted() }
     }
 

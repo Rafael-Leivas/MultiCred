@@ -128,6 +128,18 @@ public final class PseudoTerminalProcess: @unchecked Sendable {
     }
 
     /// Writes to the process's terminal input, as if typed.
+    /// Types a code into an interactive CLI and presses Enter. The two are sent
+    /// apart: Claude Code (Ink) treats a long text arriving in one read as a
+    /// paste and swallows a trailing Enter in it (seen with setup-token 2.1.301:
+    /// a ~90-character code + "\r" in one write never submits).
+    public func submitLine(_ text: String, enterDelay: Duration = .milliseconds(300)) {
+        write(Data(text.utf8))
+        let delay = Double(enterDelay.components.seconds) + Double(enterDelay.components.attoseconds) / 1e18
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in
+            write(Data("\r".utf8))
+        }
+    }
+
     public func write(_ data: Data) {
         let fd = lock.withLock { masterFD }
         guard fd >= 0 else { return }
