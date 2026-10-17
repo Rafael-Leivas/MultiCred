@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="pt-BR" data-phase="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MultiCred — um dia, três identidades</title>
+<meta name="description" content="Role o relógio de um dia de trabalho e veja o MultiCred trocar git, GitHub, Claude e chaves de API com um clique.">
+<meta name="theme-color" content="#fbd9b8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235856D6'/%3E%3Ctext x='16' y='22.5' font-family='Arial' font-weight='700' font-size='19' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Sky: reacts to scroll progress -->
+<div class="sky" id="sky" aria-hidden="true">
+  <div class="stars" id="stars"></div>
+  <div class="orb sun" id="sun"></div>
+  <div class="orb moon" id="moon"></div>
+  <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+  <svg class="hills" viewBox="0 0 1440 320" preserveAspectRatio="none">
+    <path class="h-back" d="M0 210 C180 130 320 150 520 200 S900 270 1120 190 S1360 140 1440 175 V320 H0Z"/>
+    <path class="h-front" d="M0 260 C200 210 380 240 600 262 S1000 300 1200 250 S1380 230 1440 250 V320 H0Z"/>
+  </svg>
+</div>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="MultiCred">
+    <span class="brand-mark">M</span><span>MultiCred</span>
+  </a>
+  <nav class="nav-links" aria-label="Seções">
+    <a href="#dia">O dia</a><a href="#instalar">Instalar</a><a href="#faq">FAQ</a>
+  </nav>
+  <a class="btn btn-sm btn-solid" href="#instalar">Instalar</a>
+</header>
+
+<!-- Big clock (fixed while the story plays) -->
+<div class="bigclock" id="bigclock" aria-hidden="true">
+  <span class="bc-time" data-clock>08:30</span>
+  <small class="bc-day">Sexta · 2 out</small>
+</div>
+
+<!-- Timeline rail -->
+<nav class="rail" id="rail" aria-label="Linha do tempo do dia">
+  <span class="rail-line"><i id="railFill"></i></span>
+  <a href="#cap0" data-i="0"><b>08:30</b><i></i></a>
+  <a href="#cap1" data-i="1"><b>09:12</b><i></i></a>
+  <a href="#cap2" data-i="2"><b>11:40</b><i></i></a>
+  <a href="#cap3" data-i="3"><b>14:00</b><i></i></a>
+  <a href="#cap4" data-i="4"><b>17:45</b><i></i></a>
+  <a href="#cap5" data-i="5"><b>20:30</b><i></i></a>
+  <a href="#cap6" data-i="6"><b>22:00</b><i></i></a>
+</nav>
+
+<main id="top">
+
+<section class="hero">
+  <div class="hero-in">
+    <span class="pill"><span class="dot"></span> App de barra de menus · macOS 14+</span>
+    <h1>Um dia,<br><span class="uline">três identidades.</span></h1>
+    <p class="lead">Do café às onze da noite, o MultiCred troca <b>git</b>, <b>GitHub CLI</b>, <b>Claude Code</b> e <b>chaves de API</b> com um clique. Role e acompanhe o relógio.</p>
+    <div class="cta-row">
+      <a class="btn btn-solid btn-lg" href="#dia">Começar o dia <span class="arr">↓</span></a>
+      <a class="btn btn-line btn-lg" href="#instalar">Instalar</a>
+    </div>
+  </div>
+</section>
+
+<!-- STORY -->
+<div class="story" id="dia">
+  <div class="col-text">
+
+    <section class="chap" id="cap0" data-i="0">
+      <article class="card">
+        <div class="when"><b>08:30</b> · Acordando</div>
+        <h2>Café na mão. Repositório de hobby aberto.</h2>
+        <p>O Mac está no perfil <b>Pessoal</b>: git, GitHub e Claude, tudo no meu e-mail pessoal.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <i class="pl">+</i> <b>ana.silva@gmail.com</b></p>
+          <p><span class="k">gh</span> <i class="pl">+</i> <b>anasilva</b></p>
+          <p><span class="k">claude</span> <i class="pl">+</i> <b>~/.claude-pessoal</b></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap1" data-i="1">
+      <article class="card">
+        <div class="when"><b>09:12</b> · Trabalho</div>
+        <h2>Abro o laptop. Um clique e o Mac inteiro vira trabalho.</h2>
+        <p>Escolho <b>Trabalho Acme</b> no menu. Git, GitHub e Claude trocam juntos, e um HUD confirma.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <s>ana.silva@gmail.com</s> <i>→</i> <b>ana@acme.dev</b></p>
+          <p><span class="k">gh</span> <s>anasilva</s> <i>→</i> <b>ana-acme</b></p>
+          <p><span class="k">claude</span> <s>~/.claude-pessoal</s> <i>→</i> <b>~/.claude-acme</b></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap2" data-i="2">
+      <article class="card">
+        <div class="when"><b>11:40</b> · Chamada com cliente</div>
+        <h2>O Cliente X pediu um ajuste. A conta Claude dele precisa entrar.</h2>
+        <p>Um clique em <b>Entrar…</b> e o login acontece no navegador, pelo próprio Claude Code. Nenhum token passa pelo MultiCred.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <s>ana@acme.dev</s> <i>→</i> <b>ana@clientex.com</b></p>
+          <p><span class="k">gh</span> <s>ana-acme</s> <i>→</i> <b>ana-clientex</b></p>
+          <p><span class="k">claude</span> <s>~/.claude-acme</s> <i>→</i> <b>~/.claude-clientex</b></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap3" data-i="3">
+      <article class="card">
+        <div class="when"><b>14:00</b> · Chave de API</div>
+        <h2>Preciso da chave da OpenAI do projeto.</h2>
+        <p>Ela mora no <b>Keychain</b>. O perfil só guarda qual item usar. Nada de <code>.env</code> perdido por aí.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <s>ana@clientex.com</s> <i>→</i> <b>ana@acme.dev</b></p>
+          <p><span class="k">gh</span> <s>ana-clientex</s> <i>→</i> <b>ana-acme</b></p>
+          <p><span class="k">key</span> <i class="pl">+</i> <b>OPENAI_API_KEY</b> <em>do Keychain</em></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap4" data-i="4">
+      <article class="card">
+        <div class="when"><b>17:45</b> · Sessões abertas</div>
+        <h2>Volto ao Cliente X no fim do dia. O app avisa das sessões antigas.</h2>
+        <p>Duas sessões do Claude Code abertas antes da troca continuam na conta anterior. Reinicio só essas duas.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <s>ana@acme.dev</s> <i>→</i> <b>ana@clientex.com</b></p>
+          <p><span class="k">gh</span> <s>ana-acme</s> <i>→</i> <b>ana-clientex</b></p>
+          <p><span class="k">aviso</span> <i class="pl">!</i> <b>2 sessões</b> <em>na conta Acme</em></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap5" data-i="5">
+      <article class="card">
+        <div class="when"><b>20:30</b> · Projeto paralelo</div>
+        <h2>À noite, ⌘2 e volto a ser só eu.</h2>
+        <p>O e-mail pessoal nos commits, a conta pessoal no Claude, e nada do trabalho misturado.</p>
+        <div class="diff">
+          <p><span class="k">git</span> <s>ana@clientex.com</s> <i>→</i> <b>ana.silva@gmail.com</b></p>
+          <p><span class="k">gh</span> <s>ana-clientex</s> <i>→</i> <b>anasilva</b></p>
+          <p><span class="k">claude</span> <s>~/.claude-clientex</s> <i>→</i> <b>~/.claude-pessoal</b></p>
+        </div>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+    <section class="chap" id="cap6" data-i="6">
+      <article class="card">
+        <div class="when"><b>22:00</b> · Fim do dia</div>
+        <h2>Fecho o laptop. Nenhum commit com o e-mail errado.</h2>
+        <p>Nenhum token copiado, nenhuma conta trocada na mão. Quer o mesmo dia tranquilo?</p>
+        <div class="diff">
+          <p><span class="k">git</span> <i class="ok">✓</i> <b>perfil certo o dia todo</b></p>
+          <p><span class="k">gh</span> <i class="ok">✓</i> <b>conta certa o dia todo</b></p>
+          <p><span class="k">claude</span> <i class="ok">✓</i> <b>sem token tocado</b></p>
+        </div>
+        <a class="btn btn-solid btn-lg" href="#instalar">Instalar o MultiCred</a>
+        <div class="mstage"></div>
+      </article>
+    </section>
+
+  </div>
+
+  <!-- Sticky macOS desk -->
+  <div class="col-stage" aria-hidden="true">
+    <div class="stage">
+      <div class="desk" id="desk" data-cap="0" data-prof="1">
+        <div class="menubar">
+          <span class="mb-left"><b></b>Finder<span>Arquivo</span><span>Editar</span></span>
+          <span class="mb-right">
+            <span class="mb-item"><i class="badge sm" data-b="badge">P</i></span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
+            <svg width="22" height="14" viewBox="0 0 28 16" fill="none" stroke="currentColor"><rect x="1" y="2" width="22" height="12" rx="3.5" stroke-width="1.5"/><rect x="3" y="4" width="14" height="8" rx="1.5" fill="currentColor" stroke="none"/><path d="M25 6v4" stroke-width="2" stroke-linecap="round"/></svg>
+            <span class="mclock">Sex 2 out <span data-clock>08:30</span></span>
+          </span>
+        </div>
+
+        <!-- Terminal (always dark) -->
+        <div class="el termwin" data-show="0 1 2 5">
+          <div class="tw-bar"><i></i><i></i><i></i><span>zsh — ~/projetos</span></div>
+          <div class="tw-body">
+            <p><u>❯</u> git config user.email</p>
+            <p class="out" data-b="email">ana.silva@gmail.com</p>
+            <p><u>❯</u> gh auth status</p>
+            <p class="out"><em>✓</em> Logged in as <b data-b="gh">anasilva</b></p>
+            <p><u>❯</u> echo $CLAUDE_CONFIG_DIR</p>
+            <p class="out" data-b="dir">~/.claude-pessoal</p>
+          </div>
+        </div>
+
+        <!-- Menu -->
+        <div class="el menu" data-show="0 1 2 5" data-hide-on="s-contas">
+          <div class="menu-head">
+            <i class="badge lg" data-b="badge">P</i>
+            <div class="mh-info">
+              <div class="mh-top"><b data-b="name">Pessoal</b><span class="chip-ok"><i></i>Tudo certo</span></div>
+              <small data-b="since">Ativo desde 08:30</small>
+              <ul class="mh-list">
+                <li><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 7.5v9M18 10.5c0 4-6 3-12 6"/></svg><span data-b="email">ana.silva@gmail.com</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg><span data-b="gh">anasilva</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="M12 3c.6 5 3.4 7.8 9 9-5.6 1.2-8.4 4-9 9-.6-5-3.4-7.8-9-9 5.6-1.2 8.4-4 9-9z"/></svg><span data-b="claude">Claude · Pessoal</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="msep"></div>
+          <div class="mlabel">Perfis</div>
+          <div class="mi" data-p="0"><span class="chk">✓</span><i class="badge" style="--c:#5856D6">N</i><span class="mi-t">Trabalho Acme</span><kbd>⌘1</kbd></div>
+          <div class="mi" data-p="1"><span class="chk">✓</span><i class="badge" style="--c:#D9770B">P</i><span class="mi-t">Pessoal</span><kbd>⌘2</kbd></div>
+          <div class="mi" data-p="2"><span class="chk">✓</span><i class="badge" style="--c:#0E8A9E">X</i><span class="mi-t">Cliente X</span><em class="warn">⚠ Claude precisa entrar</em><kbd>⌘3</kbd></div>
+          <div class="msep"></div>
+          <div class="mi plain"><span class="mi-t">Contas…</span></div>
+          <div class="mi plain"><span class="mi-t">Ajustes…</span><kbd>⌘,</kbd></div>
+        </div>
+
+        <!-- HUD -->
+        <div class="el hud" data-show="1" data-need="s-hud">
+          <i class="badge xl" data-b="badge">N</i>
+          <b data-b="name">Trabalho Acme</b>
+          <div class="hud-ticks"><span>✓ git</span><span>✓ gh</span><span>✓ Claude</span></div>
+        </div>
+
+        <!-- Contas window -->
+        <div class="el win contas" data-show="2" data-need="s-contas">
+          <div class="win-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Contas Claude</span></div>
+          <div class="win-body">
+            <div class="crow"><i class="av" style="--c:#5856D6">N</i><div><b>Acme</b><small>ana@acme.dev</small></div><span class="st ok"><i></i>Conectada</span></div>
+            <div class="crow"><i class="av" style="--c:#D9770B">P</i><div><b>Pessoal</b><small>ana.silva@gmail.com</small></div><span class="st ok"><i></i>Conectada</span></div>
+            <div class="crow hot"><i class="av" style="--c:#0E8A9E">X</i><div><b>Cliente X</b><small>ana@clientex.com</small></div>
+              <span class="st-off"><span class="st warn"><i></i>Precisa entrar</span><span class="btn-enter">Entrar…</span></span>
+              <span class="st ok st-on"><i></i>Conectada</span>
+            </div>
+            <p class="cnote">Cada conta tem a própria pasta. O login acontece no navegador, pelo próprio Claude Code.</p>
+          </div>
+        </div>
+
+        <!-- Editor window -->
+        <div class="el win editor" data-show="3">
+          <div class="win-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Editar perfil</span></div>
+          <div class="win-body">
+            <div class="ed-head"><i class="badge xl" style="--c:#5856D6">N</i><div><b>Trabalho Acme</b><small>Na barra de menus</small></div></div>
+            <div class="ed-group">
+              <div class="ed-row"><span>Git</span><em class="sel"><i style="--c:#5856D6"></i>Acme · ana@acme.dev</em></div>
+              <div class="ed-row"><span>GitHub</span><em class="sel"><i style="--c:#5856D6"></i>ana-acme · github.com</em></div>
+              <div class="ed-row"><span>Claude</span><em class="sel"><i style="--c:#5856D6"></i>Acme · ana@acme.dev</em></div>
+              <div class="ed-row key"><span>OpenAI</span><em class="sel"><i style="--c:#5856D6"></i>ACME · OPENAI_API_KEY</em><b class="kc">🔒 Keychain</b></div>
+              <div class="ed-row"><span>Gemini</span><em class="sel dim">Nenhuma</em></div>
+            </div>
+            <p class="cnote">Chaves de API ficam no Keychain do macOS. O perfil guarda só qual item usar.</p>
+          </div>
+        </div>
+
+        <!-- Old sessions -->
+        <div class="el sess s1" data-show="4">
+          <div class="tw-bar"><i></i><i></i><i></i><span>claude — ~/api</span></div>
+          <div class="tw-body"><p><u>✦</u> Claude Code <em>· conta Acme</em></p></div>
+        </div>
+        <div class="el sess s2" data-show="4">
+          <div class="tw-bar"><i></i><i></i><i></i><span>claude — ~/web</span></div>
+          <div class="tw-body"><p><u>✦</u> Claude Code <em>· conta Acme</em></p></div>
+        </div>
+        <div class="el warncard" data-show="4" data-need="s-warn">
+          <i class="badge xl" data-b="badge">X</i>
+          <b data-b="name">Cliente X</b>
+          <div class="hud-ticks"><span>✓ git</span><span>✓ gh</span><span>✓ Claude</span></div>
+          <div class="amber"><span>⚠</span><p><b>2 sessões do Claude Code</b> abertas antes da troca continuam na conta <b>Acme</b>. Reinicie-as para usar Cliente X.</p></div>
+          <div class="wbtn"><span>Ok</span><span>Mostrar sessões</span></div>
+        </div>
+
+        <!-- Notification -->
+        <div class="el notif" data-show="5" data-need="s-notif">
+          <i class="badge" style="--c:#D9770B">P</i>
+          <div><small>MultiCred <em>agora</em></small><b>Agora em Pessoal</b><span>git, GitHub e Claude trocados. Tudo certo.</span></div>
+        </div>
+
+        <!-- Night card -->
+        <div class="el night" data-show="6">
+          <span class="moon-ico">☾</span>
+          <i class="badge xl" data-b="badge">P</i>
+          <b data-b="name">Pessoal</b>
+          <div class="hud-ticks"><span>✓ git</span><span>✓ gh</span><span>✓ Claude</span></div>
+          <small>Boa noite. Tudo no lugar certo.</small>
+        </div>
+
+        <div class="cursor" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L9.5 19z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INSTALL -->
+<section class="after" id="instalar">
+  <div class="eyebrow">// Instalação //</div>
+  <h2>Instale em <span class="uline">menos de um minuto.</span></h2>
+
+  <div class="install panel">
+    <div class="os-tabs" role="tablist">
+      <button class="os on" role="tab" data-os="mac" aria-selected="true">macOS</button>
+      <button class="os" role="tab" data-os="ubuntu" aria-selected="false">Ubuntu <em>em breve</em></button>
+    </div>
+
+    <div class="os-panel on" id="os-mac">
+      <div class="inst-left">
+        <h3>MultiCred para macOS</h3>
+        <p>Requer macOS 14 (Sonoma) ou mais novo. Apple Silicon e Intel.</p>
+        <a class="btn btn-solid btn-lg" href="#" id="dl-mac">Baixar MultiCred.dmg</a>
+        <small>Versão 1.0 · assinatura ad hoc</small>
+      </div>
+      <ol class="inst-steps">
+        <li><b>Baixe</b> e arraste <code>MultiCred.app</code> para <em>Aplicativos</em>.</li>
+        <li><b>Abra</b> o app. Na primeira vez: botão direito › Abrir.</li>
+        <li><b>Siga o onboarding.</b> Ele mostra o diff de cada arquivo antes de aplicar.</li>
+        <li><b>Abra um novo Terminal</b> e pronto.</li>
+      </ol>
+      <div class="code" data-copy="scripts/release.sh">
+        <span># ou compile do código-fonte</span>
+        <code><i>$</i> git clone &lt;repo&gt; &amp;&amp; cd MultiCred</code>
+        <code><i>$</i> scripts/release.sh</code>
+        <button class="copy" aria-label="Copiar comando">Copiar</button>
+      </div>
+    </div>
+
+    <div class="os-panel" id="os-ubuntu">
+      <div class="inst-left">
+        <h3>MultiCred para Ubuntu</h3>
+        <p>A versão para Linux está a caminho: ícone na bandeja e a mesma troca de git, gh, Claude e chaves.</p>
+        <form class="wait" id="wait" novalidate>
+          <input type="email" placeholder="seu@email.com" aria-label="E-mail para ser avisado" required>
+          <button class="btn btn-solid">Me avise</button>
+        </form>
+        <small id="wait-msg">Sem spam. Um e-mail quando lançar.</small>
+      </div>
+      <div class="code" data-copy="sudo apt install multicred">
+        <span># previsão, ainda não disponível</span>
+        <code><i>$</i> sudo apt install multicred</code>
+        <code><i>$</i> multicred switch pessoal</code>
+        <button class="copy" aria-label="Copiar comando">Copiar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="after narrow" id="faq">
+  <div class="eyebrow">// FAQ //</div>
+  <h2>Perguntas <span class="uline">frequentes.</span></h2>
+  <div class="faq">
+    <details open><summary>O MultiCred lê ou copia meus tokens?</summary><p>Não. Ele só aponta <code>CLAUDE_CONFIG_DIR</code> para a pasta certa e usa <code>gh auth switch</code>. O login acontece no navegador, pelo próprio Claude Code. Os valores das chaves de API ficam no Keychain.</p></details>
+    <details><summary>Preciso reiniciar o terminal depois de trocar?</summary><p>Abra um novo Terminal. Sessões do Claude Code já abertas continuam na conta anterior, e o app avisa quantas são.</p></details>
+    <details><summary>Funciona com zsh, bash e fish?</summary><p>Sim. O app detecta o shell ativo e mostra os arquivos reais que vai alterar antes de aplicar.</p></details>
+    <details><summary>E se eu usava meus scripts antigos?</summary><p>O onboarding detecta a versão antiga, oferece remover as linhas e importa as suas configurações.</p></details>
+    <details><summary>Como desinstalo?</summary><p>Ajustes › Desinstalar. Só os blocos marcados são removidos e os backups ficam salvos numa pasta com a data.</p></details>
+  </div>
+</section>
+
+<section class="final">
+  <div class="panel final-card">
+    <i class="badge xl" data-b-root>P</i>
+    <h2>Pare de adivinhar<br>qual conta está ativa.</h2>
+    <p>Um clique na barra de menus e o resto do seu Mac acompanha.</p>
+    <a class="btn btn-solid btn-lg" href="#instalar">Instalar o MultiCred</a>
+  </div>
+</section>
+</main>
+
+<footer class="footer panel">
+  <div class="brand"><span class="brand-mark">M</span><span>MultiCred</span></div>
+  <p>© 2026 MultiCred. Feito para quem vive entre contas.</p>
+  <nav><a href="#dia">O dia</a><a href="#instalar">Instalar</a><a href="#faq">FAQ</a></nav>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
