@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MultiCred — anatomia de um perfil</title>
+<meta name="description" content="Vista explodida do MultiCred: git, GitHub CLI, Claude Code e chaves de API, montados em um perfil que troca com um clique na barra de menus do macOS.">
+<meta name="theme-color" content="#0a1730">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%230a1730'/%3E%3Crect x='3' y='3' width='26' height='26' rx='3' fill='none' stroke='%235ee0ff' stroke-width='2'/%3E%3Ctext x='16' y='22' font-family='Arial' font-weight='700' font-size='16' text-anchor='middle' fill='%235ee0ff'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="bp">
+
+<!-- Moldura de prancha técnica -->
+<div class="frame" aria-hidden="true"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></div>
+<aside class="titleblock" aria-hidden="true">
+  <div class="tb-wide"><small>TÍTULO</small><b id="tb-title">Anatomia de um perfil</b></div>
+  <div><small>ESCALA</small><b>1:1</b></div>
+  <div><small>DATA</small><b>16.10.2026</b></div>
+  <div><small>FOLHA</small><b id="tb-sheet">1/6</b></div>
+  <div><small>REV.</small><b>A</b></div>
+</aside>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="MultiCred">
+    <span class="brand-mark" data-bind="badge">N</span>
+    <span>MultiCred</span>
+  </a>
+  <nav class="nav-links" aria-label="Seções">
+    <a href="#anatomia">01 Anatomia</a>
+    <a href="#operacao">02 Operação</a>
+    <a href="#detalhes">03 Detalhes</a>
+    <a href="#seguranca">04 Segurança</a>
+    <a href="#montagem">05 Montagem</a>
+    <a href="#notas">06 Notas</a>
+  </nav>
+  <a class="btn btn-sm btn-primary" href="#montagem">Instalar</a>
+</header>
+
+<main id="top">
+
+<!-- ============ FOLHA 1 · ANATOMIA (vista explodida) ============ -->
+<section class="scene scene-a" id="anatomia" data-sheet="1" data-title="Anatomia de um perfil">
+  <div class="sticky">
+    <div class="a-copy">
+      <div class="kicker">FIG. 1 — VISTA ISOMÉTRICA EXPLODIDA</div>
+      <h1>Anatomia de <span class="cy">um perfil.</span></h1>
+      <p class="lead">Um perfil do MultiCred é uma peça montada: identidade do <b>git</b>, conta do <b>GitHub CLI</b>, conta do <b>Claude Code</b> e <b>chaves de API</b>. Role para desmontar. Um clique na barra de menus e as quatro peças trocam juntas.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary btn-lg" href="#montagem"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.2 3.1-2.4 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.8-1.1-2.8-4.3zM13.9 5.2c.7-.8 1.2-2 1-3.2-1 0-2.3.7-3 1.5-.7.7-1.2 1.9-1.1 3.1 1.2.1 2.4-.6 3.1-1.4z"/></svg> Baixar para macOS</a>
+        <a class="btn btn-ghost btn-lg" href="#operacao">Ver a troca</a>
+      </div>
+      <div class="a-state" aria-live="off">
+        <div class="bar"><i id="a-fill"></i></div>
+        <div class="steps-s"><span data-s="0" class="on">01 · MONTADO</span><span data-s="1">02 · DESMONTANDO</span><span data-s="2">03 · EXPLODIDO</span></div>
+      </div>
+    </div>
+
+    <div class="a-stage" id="a-stage">
+      <svg class="leaders" id="leaders" aria-hidden="true"></svg>
+      <div class="stack-wrap">
+        <div class="stack" id="heroStack" aria-label="Perfil em vista explodida: perfil, git, GitHub CLI, Claude Code e chaves de API"></div>
+        <div class="dim" aria-hidden="true"><span>Δz = <b id="dimv">0</b> mm</span></div>
+      </div>
+      <ol class="callouts">
+        <li data-layer="4" style="--k:4"><span class="pn">⑤</span><h3>Chaves de API</h3><code>Keychain · <b data-bind="keyname">ACME_OPENAI_KEY</b></code><em class="cota">COTA 05 · só o nome do item fica no perfil</em></li>
+        <li data-layer="3" style="--k:3"><span class="pn">④</span><h3>Claude Code</h3><code>CLAUDE_CONFIG_DIR=<b data-bind="dir">~/.claude-acme</b></code><em class="cota">COTA 04 · login no navegador, sem copiar tokens</em></li>
+        <li data-layer="2" style="--k:2"><span class="pn">③</span><h3>GitHub CLI</h3><code>gh auth switch -u <b data-bind="gh">ana-acme</b></code><em class="cota">COTA 03 · conta ativa global do gh</em></li>
+        <li data-layer="1" style="--k:1"><span class="pn">②</span><h3>Git</h3><code>user.email = <b data-bind="email">ana@acme.dev</b></code><em class="cota">COTA 02 · include no gitconfig global</em></li>
+        <li data-layer="0" style="--k:0"><span class="pn">①</span><h3>Perfil</h3><code><b data-bind="name">Trabalho Acme</b> · cor + ícone</code><em class="cota">COTA 01 · o que aparece na barra de menus</em></li>
+      </ol>
+    </div>
+    <div class="stamp" aria-hidden="true"><span>REV. A</span><b>MultiCred</b><span>APROVADO</span></div>
+  </div>
+</section>
+
+<!-- ============ FOLHA 2 · OPERAÇÃO (a mesa) ============ -->
+<section class="scene scene-b" id="operacao" data-sheet="2" data-title="Troca de perfil">
+  <div class="sticky">
+    <div class="detail desk-detail">
+      <span class="dtag">DETALHE A — BARRA DE MENUS · ESCALA 1:1</span>
+      <span class="zoom" aria-hidden="true">A</span>
+      <div class="desk" id="desk">
+      <div class="menubar">
+        <span class="mb-left"><b></b>Finder<span>Arquivo</span><span>Editar</span><span>Visualizar</span></span>
+        <span class="mb-right">
+          <span class="mb-item active" data-bind="badge-bg"><i class="badge sm" data-bind="badge">N</i></span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
+          <svg width="22" height="16" viewBox="0 0 28 16" fill="none" stroke="currentColor"><rect x="1" y="2" width="22" height="12" rx="3.500" stroke-width="1.500"/><rect x="3" y="4" width="14" height="8" rx="1.500" fill="currentColor" stroke="none"/><path d="M25 6v4" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="clock">Sex 2 out 14:32</span>
+        </span>
+      </div>
+
+      <div class="menu" role="menu" aria-label="Menu do MultiCred (demonstração)">
+        <div class="menu-head">
+          <i class="badge lg" data-bind="badge">N</i>
+          <div class="mh-info">
+            <div class="mh-top"><b data-bind="name">Trabalho Acme</b><span class="ok"><i></i>Tudo certo</span></div>
+            <small data-bind="since">Ativo desde 09:12</small>
+            <ul class="mh-list">
+              <li><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.500"/><circle cx="6" cy="19" r="2.500"/><circle cx="18" cy="8" r="2.500"/><path d="M6 7.500v9M18 10.500c0 4-6 3-12 6"/></svg><span data-bind="email">ana@acme.dev</span></li>
+              <li><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg><span data-bind="gh">ana-acme</span></li>
+              <li><svg viewBox="0 0 24 24"><path d="M12 3c.6 5 3.400 7.800 9 9-5.600 1.200-8.400 4-9 9-.6-5-3.400-7.800-9-9 5.600-1.200 8.400-4 9-9z"/></svg><span data-bind="claude">Claude · Acme</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="menu-sep"></div>
+        <div class="menu-label">Perfis</div>
+        <button class="mi" data-profile="0"><span class="chk">✓</span><i class="badge" style="--c:#5856D6">N</i><span class="mi-t">Trabalho Acme</span><kbd>⌘1</kbd></button>
+        <button class="mi" data-profile="1"><span class="chk">✓</span><i class="badge" style="--c:#D9770B">P</i><span class="mi-t">Pessoal</span><kbd>⌘2</kbd></button>
+        <button class="mi" data-profile="2"><span class="chk">✓</span><i class="badge" style="--c:#0E8A9E">X</i><span class="mi-t">Cliente X</span><em class="warn">⚠ Claude precisa entrar</em><kbd>⌘3</kbd></button>
+        <div class="menu-sep"></div>
+        <div class="mi hl"><svg viewBox="0 0 24 24"><path d="M12 3c.6 5 3.400 7.800 9 9-5.600 1.200-8.400 4-9 9-.6-5-3.400-7.800-9-9 5.600-1.200 8.400-4 9-9z"/></svg><span class="mi-t">Trocar só a conta Claude</span><span>›</span></div>
+        <div class="menu-sep"></div>
+        <div class="mi"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.500 8 8 9 4.500-1 8-4 8-9V6z"/></svg><span class="mi-t">Verificar…</span><kbd>⌘R</kbd></div>
+        <div class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg><span class="mi-t">Contas…</span></div>
+        <div class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg><span class="mi-t">Ajustes…</span><kbd>⌘,</kbd></div>
+      </div>
+
+      <div class="hud" id="hud" aria-hidden="true">
+        <i class="badge xl" data-bind="badge">N</i>
+        <b data-bind="name">Trabalho Acme</b>
+        <div class="hud-ticks"><span>✓ git</span><span>✓ gh</span><span>✓ Claude</span></div>
+      </div>
+      <div class="cursor" id="cursor" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.500L9.500 19z" fill="#fff" stroke="#000" stroke-width="1.200" stroke-linejoin="round"/></svg></div>
+    </div>
+    </div>
+
+    <div class="b-side">
+      <div class="kicker">FIG. 2 — TROCA, RE-MONTAGEM</div>
+      <h2>Um clique.<br><span class="cy">Quatro peças trocadas.</span></h2>
+      <ol class="ops">
+        <li data-op="0"><b>01</b> Trabalho Acme <small>git · gh · Claude · chave</small></li>
+        <li data-op="1"><b>02</b> Pessoal <small>role para trocar, ou clique no menu</small></li>
+        <li data-op="2"><b>03</b> Cliente X <small>o perfil se re-monta na nova cor</small></li>
+      </ol>
+      <div class="mini" id="mini" aria-hidden="true">
+        <div class="stack-wrap"><div class="stack" id="miniStack"></div></div>
+      </div>
+      <div class="chips" role="group" aria-label="Escolher perfil na demonstração">
+        <button class="chip" data-profile="0"><i style="--c:#5856D6"></i>Trabalho</button>
+        <button class="chip" data-profile="1"><i style="--c:#D9770B"></i>Pessoal</button>
+        <button class="chip" data-profile="2"><i style="--c:#0E8A9E"></i>Cliente X</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOLHA 3 · DETALHES AMPLIADOS ============ -->
+<section class="sheet" id="detalhes" data-sheet="3" data-title="Detalhes ampliados">
+  <div class="sh-head reveal">
+    <div class="kicker">FOLHA 3 — DETALHES AMPLIADOS</div>
+    <h2>Nativo, rápido e <span class="cy">com cara de Mac.</span></h2>
+    <p class="sub">Uma janela só, que avança e volta. Nada de sheets ou janelas soltas para cada passo.</p>
+  </div>
+  <div class="shots">
+    <div class="dwrap reveal " style="--d:0.00s">
+      <span class="dtag">DETALHE B — ESCALA 2:1</span><span class="zoom" aria-hidden="true">B</span>
+      <figure class="win">
+      <div class="win-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+      <div class="win-body contas">
+        <aside>
+          <small>Contas</small>
+          <a>⑂ Git <em>2</em></a><a>‹› GitHub <em>2</em></a><a class="on">✦ Claude <em class="w">1 ⚠</em></a><a>⚷ Chaves de API <em>2</em></a>
+          <small>Perfis</small>
+          <a><i class="badge sm" style="--c:#5856D6">N</i> Trabalho Acme</a><a><i class="badge sm" style="--c:#D9770B">P</i> Pessoal</a><a><i class="badge sm" style="--c:#0E8A9E">X</i> Cliente X</a>
+        </aside>
+        <section>
+          <header><b>Contas Claude</b><span class="btn btn-sm btn-primary">+ Adicionar conta</span></header>
+          <div class="trow"><i class="av" style="--c:#5856D6">N</i><div><b>Acme</b><small>ana@acme.dev</small></div><span>Trabalho Acme</span><code>claude/acme</code><span class="st ok"><i></i>Conectada</span></div>
+          <div class="trow"><i class="av" style="--c:#D9770B">P</i><div><b>Pessoal</b><small>ana.silva@gmail.com</small></div><span>Pessoal</span><code>claude/pessoal</code><span class="st ok"><i></i>Conectada</span></div>
+          <div class="trow"><i class="av" style="--c:#0E8A9E">X</i><div><b>Cliente X</b><small>ana@clientex.com</small></div><span>Cliente X</span><code>claude/cliente-x</code><span class="st warn"><i></i>Precisa entrar</span></div>
+        </section>
+      </div>
+      <figcaption><b>Contas</b> · cada conta com a própria pasta, status ao vivo e login com um clique.</figcaption>
+    </figure>
+    </div>
+    <div class="dwrap reveal " style="--d:0.08s">
+      <span class="dtag">DETALHE C — ESCALA 2:1</span><span class="zoom" aria-hidden="true">C</span>
+      <figure class="win" style="--d:.1s">
+      <div class="win-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Editar perfil</span></div>
+      <div class="win-body editor">
+        <div class="ed-head"><i class="badge xl" style="--c:#5856D6">N</i><div><b>Trabalho Acme</b><small>Na barra de menus:</small></div></div>
+        <div class="ed-group">
+          <div class="ed-row"><span>Nome</span><em class="field">Trabalho Acme</em></div>
+          <div class="ed-row"><span>Cor</span><div class="swatches"><i style="--c:#5856D6" class="sel"></i><i style="--c:#0064E0"></i><i style="--c:#0E8A9E"></i><i style="--c:#1C8A36"></i><i style="--c:#D9770B"></i><i style="--c:#C8101E"></i><i style="--c:#B23A8F"></i><i style="--c:#6E6E73"></i></div></div>
+        </div>
+        <small class="ed-label">Composição</small>
+        <div class="ed-group">
+          <div class="ed-row"><span>Git</span><em class="sel-box"><i style="--c:#5856D6"></i>Acme · ana@acme.dev ⇅</em></div>
+          <div class="ed-row"><span>GitHub</span><em class="sel-box"><i style="--c:#5856D6"></i>ana-acme · github.com ⇅</em></div>
+          <div class="ed-row"><span>Claude</span><em class="sel-box"><i style="--c:#5856D6"></i>Acme · ana@acme.dev ⇅</em></div>
+          <div class="ed-row"><span>OpenAI</span><em class="sel-box"><i style="--c:#5856D6"></i>ACME · OPENAI_API_KEY ⇅</em></div>
+        </div>
+      </div>
+      <figcaption><b>Editor de perfil</b> · nome, cor, ícone e a composição de cada ferramenta.</figcaption>
+    </figure>
+    </div>
+    <div class="dwrap reveal wide" style="--d:0.16s">
+      <span class="dtag">DETALHE D — ESCALA 2:1</span><span class="zoom" aria-hidden="true">D</span>
+      <figure class="win hudshot" style="--d:.2s">
+      <div class="hud-demo">
+        <div class="notif"><i class="badge lg" style="--c:#D9770B">P</i><div><small>MultiCred <em>agora</em></small><b>Agora em Pessoal</b><span>git, GitHub e Claude trocados. Tudo certo.</span></div></div>
+        <div class="hud-card"><i class="badge xl" style="--c:#D9770B">P</i><b>Pessoal</b><div class="hud-ticks"><span>✓ git</span><span>✓ gh</span><span>✓ Claude</span></div></div>
+      </div>
+      <figcaption><b>Confirmação na troca</b> · um HUD rápido e uma notificação dizem o que mudou.</figcaption>
+    </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOLHA 4 · ESPECIFICAÇÕES / SEGURANÇA ============ -->
+<section class="sheet" id="seguranca" data-sheet="4" data-title="Especificações de segurança">
+  <div class="sh-head reveal">
+    <div class="kicker">FOLHA 4 — ESPECIFICAÇÕES E TOLERÂNCIAS</div>
+    <h2>Mexe no mínimo. <span class="cy">Nunca nos seus segredos.</span></h2>
+  </div>
+  <div class="specs">
+    <div class="reveal">
+      <table class="spec">
+        <caption><span class="tag ok-t">ALTERA</span> o que o app escreve</caption>
+        <thead><tr><th>Item</th><th>Método</th><th>Tolerância</th></tr></thead>
+        <tbody>
+          <tr><td><code># &gt;&gt;&gt; MultiCred &gt;&gt;&gt;</code> no <code>~/.zshrc</code>, bash e gitconfig</td><td>bloco marcado</td><td class="tol">±0 linhas fora do bloco</td></tr>
+          <tr><td>Conta ativa do <code>gh</code></td><td><code>gh auth switch</code></td><td class="tol">sem tocar no hosts.yml</td></tr>
+          <tr><td><code>CLAUDE_CONFIG_DIR</code> para apps gráficos</td><td><code>launchctl setenv</code></td><td class="tol">só a variável</td></tr>
+          <tr><td>Itens <code>app.multicred.apikey</code></td><td>Keychain do macOS</td><td class="tol">só os valores das chaves</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="reveal" style="--d:.08s">
+      <table class="spec">
+        <caption><span class="tag no-t">NUNCA TOCA</span> fora de escopo</caption>
+        <thead><tr><th>Item</th><th>Garantia</th><th>Tolerância</th></tr></thead>
+        <tbody>
+          <tr><td>Tokens do Claude Code e do gh</td><td>não lê, não copia</td><td class="tol">0 bytes lidos</td></tr>
+          <tr><td>Conteúdo das pastas <code>~/.claude*</code></td><td>só aponta para a pasta</td><td class="tol">0 gravações</td></tr>
+          <tr><td><code>hosts.yml</code> do gh</td><td>só via <code>gh</code></td><td class="tol">0 edições diretas</td></tr>
+          <tr><td>Qualquer linha fora do bloco do MultiCred</td><td>bloco marcado e reversível</td><td class="tol">±0 linhas</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="uninstall reveal" style="--d:.12s">
+      <b>Nota de desmontagem.</b> Ajustes › Desinstalar remove só os blocos, o arquivo do fish, a variável do launchd, as chaves do Keychain e a pasta do app. Os backups vão para <code>MultiCred-backups-&lt;data&gt;</code> e suas contas continuam logadas nas próprias ferramentas.
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOLHA 5 · MONTAGEM / INSTALAÇÃO ============ -->
+<section class="sheet" id="montagem" data-sheet="5" data-title="Instruções de montagem">
+  <div class="sh-head reveal">
+    <div class="kicker">FOLHA 5 — INSTRUÇÕES DE MONTAGEM</div>
+    <h2>Monte em <span class="cy">menos de um minuto.</span></h2>
+  </div>
+
+  <div class="install reveal">
+    <div class="os-tabs" role="tablist">
+      <button class="os on" role="tab" data-os="mac" aria-selected="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.2 3.1-2.4 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.8-1.1-2.8-4.3zM13.9 5.2c.7-.8 1.2-2 1-3.2-1 0-2.3.7-3 1.5-.7.7-1.2 1.9-1.1 3.1 1.2.1 2.4-.6 3.1-1.4z"/></svg> macOS</button>
+      <button class="os" role="tab" data-os="ubuntu" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="5.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="18.5" cy="15.5" r="1.5" fill="currentColor"/></svg> Ubuntu <em>em breve</em></button>
+    </div>
+
+    <div class="os-panel on" id="os-mac">
+      <div class="inst-left">
+        <h3>MultiCred para macOS</h3>
+        <p>Requer macOS 14 (Sonoma) ou mais novo. Apple Silicon e Intel.</p>
+        <a class="btn btn-primary btn-lg" href="#" id="dl-mac">Baixar MultiCred.dmg</a>
+        <small>Versão 1.0 · assinatura ad hoc</small>
+        <div class="parts"><b>LISTA DE PEÇAS</b><span>1× MultiCred.app</span><span>1× macOS 14+</span><span>git · gh · Claude Code (detectados)</span></div>
+      </div>
+      <ol class="assy">
+        <li><b>Baixe</b> e arraste <code>MultiCred.app</code> para <em>Aplicativos</em>.</li>
+        <li><b>Abra</b> o app. Na primeira vez: botão direito › Abrir.</li>
+        <li><b>Siga o onboarding.</b> Ele mostra o diff de cada arquivo antes de aplicar.</li>
+        <li><b>Abra um novo Terminal</b> e pronto.</li>
+      </ol>
+      <div class="code" data-copy="scripts/release.sh">
+        <span># ou compile do código-fonte</span>
+        <code><i>$</i> git clone &lt;repo&gt; &amp;&amp; cd MultiCred</code>
+        <code><i>$</i> scripts/release.sh</code>
+        <button class="copy" aria-label="Copiar comando">Copiar</button>
+      </div>
+    </div>
+
+    <div class="os-panel" id="os-ubuntu">
+      <div class="inst-left">
+        <h3>MultiCred para Ubuntu</h3>
+        <p>A versão para Linux está a caminho: ícone na bandeja e a mesma troca de git, gh, Claude e chaves.</p>
+        <form class="wait" id="wait" novalidate>
+          <input type="email" placeholder="seu@email.com" aria-label="E-mail para ser avisado" required>
+          <button class="btn btn-primary">Me avise</button>
+        </form>
+        <small id="wait-msg">Sem spam. Um e-mail quando lançar.</small>
+      </div>
+      <div class="code" data-copy="sudo apt install multicred">
+        <span># previsão, ainda não disponível</span>
+        <code><i>$</i> sudo apt install multicred</code>
+        <code><i>$</i> multicred switch pessoal</code>
+        <button class="copy" aria-label="Copiar comando">Copiar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOLHA 6 · NOTAS DE RODAPÉ ============ -->
+<section class="sheet narrow" id="notas" data-sheet="6" data-title="Notas de rodapé da prancha">
+  <div class="sh-head reveal">
+    <div class="kicker">FOLHA 6 — NOTAS DE RODAPÉ DA PRANCHA</div>
+    <h2>Perguntas <span class="cy">frequentes.</span></h2>
+  </div>
+  <div class="faq reveal">
+    <details open><summary><b>NOTA 1</b> O MultiCred lê ou copia meus tokens?</summary><p>Não. Ele só aponta <code>CLAUDE_CONFIG_DIR</code> para a pasta certa e usa <code>gh auth switch</code>. O login acontece no navegador, pelo próprio Claude Code. Os valores das chaves de API ficam no Keychain.</p></details>
+    <details><summary><b>NOTA 2</b> Preciso reiniciar o terminal depois de trocar?</summary><p>Abra um novo Terminal. Sessões do Claude Code já abertas continuam na conta anterior, e o app avisa quantas são.</p></details>
+    <details><summary><b>NOTA 3</b> Funciona com zsh, bash e fish?</summary><p>Sim. O app detecta o shell ativo e mostra os arquivos reais que vai alterar antes de aplicar.</p></details>
+    <details><summary><b>NOTA 4</b> E se eu usava meus scripts antigos?</summary><p>O onboarding detecta a versão antiga, oferece remover as linhas e importa as suas configurações.</p></details>
+    <details><summary><b>NOTA 5</b> Como desinstalo?</summary><p>Ajustes › Desinstalar. Só os blocos marcados são removidos e os backups ficam salvos numa pasta com a data.</p></details>
+  </div>
+
+  <div class="cta reveal">
+    <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    <div class="kicker">PEÇA APROVADA · REV. A</div>
+    <h2>Pare de adivinhar<br><span class="cy">qual conta está ativa.</span></h2>
+    <p>Um clique na barra de menus e o resto do seu Mac acompanha.</p>
+    <a class="btn btn-primary btn-lg" href="#montagem">Instalar o MultiCred</a>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="brand"><span class="brand-mark" data-bind="badge">N</span><span>MultiCred</span></div>
+  <p>© 2026 MultiCred · Desenho nº 0001 · Feito para quem vive entre contas.</p>
+  <nav><a href="#anatomia">Anatomia</a><a href="#seguranca">Segurança</a><a href="#montagem">Instalar</a><a href="#notas">FAQ</a></nav>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
