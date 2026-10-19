@@ -1,0 +1,415 @@
+"""Applies profiles transactionally (docs/PLAN.md §5.2).
+
+    preflight (no changes) -> git -> github -> session -> claudeSettings
+        -> claudeLogin -> envFiles -> state   <- commit point: generation bump
+
+A failure at step k undoes k-1 … 1 in reverse order and reports the step and
+whether the rollback was complete. Platforms without a graphical session (Termux)
+have no `session` step. One switch at a time: a second request
+while one runs gets Busy instead of queueing behind it.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import re
+import threading
+import uuid
+
+from ..adapters.github_cli import GitHubCLI
+from ..adapters import session_env
+from ..adapters.session_env import SessionEnvironment
+from ..claude import attribution
+from ..claude.login_vault import ClaudeLoginSwitcher, OccupancyUnreadable
+from ..models import ActiveState, ClaudeAccountKind, ClaudeFolder, Config, uuid_text
+from ..paths import AppPaths
+from ..rendering import gitconfig
+from ..rendering.envfile import (
+    SECRET_TOOL, APIKeyExport, ShellEnvironment, render_fish, render_posix, secret_reader_for,
+)
+from ..storage import AtomicFileWriter, StateStore, read_bytes, restore_file
+from ..tools import Tool
+from ..validation import RESERVED_ENV_VARS, is_valid_env_var_name, issues_in
+from .types import (
+    Busy, ClaudeTarget, InvalidConfiguration, Preflight, PreflightFailure, RollbackOutcome, StateUnreadable,
+    StepFailed, SwitchResult, SwitchStep, SwitchStepKind,
+)
+
+CLAUDE_VARIABLE = "CLAUDE_CONFIG_DIR"
+# A key line of env.sh starts with `NAME=` (`NAME="$(…secret-tool…)"` on the desktop,
+# `NAME=''; … read -r NAME …` on Termux) and exports NAME.
+_KEY_LINE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=")
+
+
+class _Operation:
+    def __init__(self, kind: str, target: uuid.UUID | None = None):
+        self.kind = kind  # "profile" | "claudeOnly" | "reapply"
+        self.target = target
+
+    @property
+    def starts_new_activation(self) -> bool:
+        """"Active since" restarts only when a profile is chosen."""
+        return self.kind == "profile"
+
+
+class SwitchEngine:
+    def __init__(self, environment, tools, log=None, secret_tool: str = SECRET_TOOL):
+        self.environment = environment
+        self.paths = AppPaths(environment)
+        self.tools = tools
+        self.state_store = StateStore(self.paths, environment.clock)
+        self.log = log
+        self.secret_tool = secret_tool
+        # secret-tool on the desktop; the key's 0600 file, read with builtins, on Termux.
+        self.secret_reader = secret_reader_for(environment.platform, secret_tool)
+        self._lock = threading.Lock()
+
+    # MARK: public API
+
+    def switch_profile(self, profile_id: uuid.UUID, config: Config) -> SwitchResult:
+        """Switches everything to `profile_id` and clears any Claude-only override."""
+        return self._perform(config, _Operation("profile", profile_id))
+
+    def switch_claude_only(self, account_id: uuid.UUID | None, config: Config) -> SwitchResult:
+        """Switches only the Claude account; git, gh and API keys stay."""
+        return self._perform(config, _Operation("claudeOnly", account_id))
+
+    def reapply_active_profile(self, config: Config) -> SwitchResult | None:
+        """Re-applies the active profile (at session start). None when none was ever
+        activated, or when the active profile no longer exists in the configuration
+        (deleted while active): nothing to re-apply, logged, not a failure at every login."""
+        if self._load_state().profile_id is None:
+            return None
+        return self._perform(config, _Operation("reapply"))
+
+    def current_state(self) -> ActiveState:
+        return self._load_state()
+
+    @contextlib.contextmanager
+    def exclusive(self):
+        """Holds the switch lock for another change to the folders' Claude logins
+        (removing an account, signing one in again): two place() at once could save one
+        folder's login over another's. Raises Busy, before anything runs, while a
+        switch is running; a switch requested meanwhile gets Busy too."""
+        if not self._lock.acquire(blocking=False):
+            raise Busy()
+        try:
+            yield
+        finally:
+            self._lock.release()
+
+    # MARK: transaction
+
+    def _perform(self, config: Config, operation: _Operation) -> SwitchResult | None:
+        if not self._lock.acquire(blocking=False):
+            raise Busy()
+        try:
+            return self._transaction(config, operation)
+        finally:
+            self._lock.release()
+
+    def _transaction(self, config: Config, operation: _Operation) -> SwitchResult | None:
+        transaction = uuid.uuid4().hex[:8]
+        issues = issues_in(config)
+        if issues:
+            self._log("error", f"switch {transaction}: invalid configuration ({len(issues)} issues)")
+            raise InvalidConfiguration(issues)
+        previous = self._load_state()
+
+        if operation.kind == "profile":
+            profile_id, override, touches_git_and_github = operation.target, None, True
+        elif operation.kind == "claudeOnly":
+            profile_id, override, touches_git_and_github = previous.profile_id, operation.target, False
+        else:
+            # An override for an account that no longer exists is dropped, not fatal.
+            kept = previous.claude_override_id
+            if kept is not None and kept != ClaudeFolder.OWN_LOGIN_OVERRIDE and config.claude_account(kept) is None:
+                kept = None
+            profile_id, override, touches_git_and_github = previous.profile_id, kept, True
+            if profile_id is not None and config.profile(profile_id) is None:
+                self._log("warning", f"switch {transaction}: active profile {uuid_text(profile_id)} no longer "
+                                     "exists; nothing re-applied")
+                return None
+
+        profile = config.profile(profile_id)
+        if profile_id is not None and profile is None:
+            raise Preflight(PreflightFailure("profileNotFound"))
+        if (override is not None and override != ClaudeFolder.OWN_LOGIN_OVERRIDE
+                and config.claude_account(override) is None):
+            raise Preflight(PreflightFailure("claudeAccountNotFound"))
+
+        # The Claude folder (agents, skills, chats) belongs to the profile and only
+        # changes with the profile. The Claude account is just the credential: the
+        # override (switch only the Claude account) wins over the profile's choice,
+        # and no account means the folder's own login.
+        if profile is None:
+            claude_target = ClaudeTarget.unchanged()
+        elif profile.claude_config_dir is None:
+            claude_target = ClaudeTarget.default()
+        else:
+            claude_target = ClaudeTarget.directory(profile.claude_config_dir)
+        if override == ClaudeFolder.OWN_LOGIN_OVERRIDE:
+            chosen = None
+        else:
+            chosen = override if override is not None else (profile.claude_account_id if profile else None)
+        chosen_account = config.claude_account(chosen)
+        token_account = chosen_account if chosen_account and chosen_account.kind == ClaudeAccountKind.TOKEN else None
+        login_account = chosen_account if chosen_account and chosen_account.kind == ClaudeAccountKind.LOGIN else None
+        applied_account = token_account or login_account
+        # A login account goes into the active profile's folder; with no profile there is
+        # no folder, so it could never be applied (a token account still can: shells).
+        if login_account is not None and profile is None:
+            raise Preflight(PreflightFailure("noActiveProfile", login_account.nickname))
+        login_switcher = ClaudeLoginSwitcher(self.environment, log=self._log)
+
+        now = self.environment.clock()
+        new_state = ActiveState(
+            profile_id=profile_id,
+            claude_override_id=override,
+            applied_claude_account_id=applied_account.id if applied_account else None,
+            activated_at=now if operation.starts_new_activation else (previous.activated_at or now),
+            generation=previous.generation + 1,
+        )
+        api_keys = [config.api_key(k) for k in (profile.api_key_ids if profile else [])]
+        api_keys = [k for k in api_keys if k is not None]
+        exports = [APIKeyExport(k.env_var, k.secret_account) for k in api_keys]
+        if token_account is not None:
+            exports.append(APIKeyExport(ClaudeFolder.TOKEN_VARIABLE, token_account.secret_account))
+        shell_environment = ShellEnvironment(
+            generation=new_state.generation,
+            managed_vars=sorted(set(config.managed_env_vars) | self._previously_managed_vars()),
+            claude=claude_target,
+            api_keys=exports,
+        )
+        child_environment = self.environment.base_process_environment(self.tools.search_directories())
+
+        # Preflight: everything that can be checked without changing anything.
+        # gh token validity is deliberately not checked: `gh auth status` tests
+        # every token over the network, which would make switching slow and
+        # impossible offline. An account gh does not know makes `gh auth switch`
+        # fail, and the transaction rolls back. Token health belongs to Verificar.
+        github_plan = None
+        github_account = config.github_account(profile.github_account_id if profile else None)
+        if touches_git_and_github and github_account is not None:
+            gh = self.tools.locate(Tool.GH)
+            if gh is None:
+                raise Preflight(PreflightFailure("toolMissing", "gh"))
+            github_plan = (GitHubCLI(self.environment.runner, gh, child_environment), github_account)
+        if claude_target.kind == "directory" and not os.path.isdir(claude_target.path):
+            raise Preflight(PreflightFailure("claudeDirectoryMissing", claude_target.path))
+        for key in api_keys:
+            try:
+                present = self.environment.secrets.contains_item(key.secret_account)
+            except Exception as error:
+                raise Preflight(PreflightFailure("secretsUnavailable", str(error))) from error
+            if not present:
+                raise Preflight(PreflightFailure("apiKeyMissing", key.nickname, key.env_var))
+        # (The macOS check for tokens stored by an old build under a different
+        # Keychain ACL, claudeTokenNeedsRefresh, has no Linux counterpart.)
+        # A Secret Service error is reported as such (the macOS app reported it as
+        # "missing"), so a locked keyring is not mistaken for a deleted login.
+        if login_account is not None:
+            try:
+                present = self.environment.claude_credentials.read_vault(uuid_text(login_account.id)) is not None
+            except Exception as error:
+                raise Preflight(PreflightFailure("secretsUnavailable", str(error))) from error
+            if not present:
+                raise Preflight(PreflightFailure("claudeLoginMissing", login_account.nickname))
+        if token_account is not None:
+            try:
+                present = self.environment.secrets.contains_item(token_account.secret_account)
+            except Exception as error:
+                raise Preflight(PreflightFailure("secretsUnavailable", str(error))) from error
+            if not present:
+                raise Preflight(PreflightFailure("claudeTokenMissing", token_account.nickname))
+
+        # Which login each folder holds: unreadable means a switch could save a folder's
+        # live login over another login in the vault, so nothing is changed.
+        occupancy = None
+        if profile is not None:
+            try:
+                occupancy = login_switcher.occupancy()
+            except OccupancyUnreadable as error:
+                raise Preflight(PreflightFailure("claudeFoldersUnreadable", str(error.path))) from error
+
+        steps: list[SwitchStep] = []
+        if touches_git_and_github:
+            identity = config.git_identity(profile.git_identity_id if profile else None)
+            steps.append(self._git_step(gitconfig.render(identity, self.environment)))
+        if github_plan is not None:
+            steps.append(self._github_step(*github_plan))
+        # Switching only the Claude account never moves the folder. Termux has no
+        # graphical session (no systemd, no environment.d): only the shells carry it.
+        if (touches_git_and_github and claude_target.kind != "unchanged"
+                and self.environment.platform.has_graphical_session):
+            steps.append(self._session_step(claude_target, SessionEnvironment(self.environment, child_environment)))
+        # Claude as co-author follows the profile's GitHub account, written to the
+        # profile's Claude folder (Claude Code reads it only from settings).
+        if touches_git_and_github and github_account is not None:
+            steps.append(self._claude_settings_step(profile.claude_config_dir, github_account.claude_co_author))
+        # Login accounts live in the folder's own credentials; leaving one (another
+        # account or the folder's own login chosen) puts the folder's login back.
+        if profile is not None and (login_account is not None
+                                    or occupancy.account_in(profile.claude_config_dir) is not None):
+            steps.append(self._claude_login_step(login_switcher, login_account.id if login_account else None,
+                                                 profile.claude_config_dir))
+        steps.append(self._env_files_step(shell_environment))
+        steps.append(self._state_step(new_state))
+
+        account_name = applied_account.nickname if applied_account else "login da pasta"
+        self._log("info", f"switch {transaction}: start profile={profile.name if profile else '-'} "
+                          f"folder={claude_target} account={account_name} steps={[s.kind.value for s in steps]}")
+        undo_stack = []
+        for step in steps:
+            try:
+                undo = step.apply()
+            except Exception as error:  # every failure becomes StepFailed with a rollback report
+                reason = str(error)
+                self._log("error", f"switch {transaction}: step {step.kind.value} failed: {reason}")
+                not_undone = []
+                for kind, pending_undo in reversed(undo_stack):
+                    try:
+                        pending_undo()
+                    except Exception as undo_error:
+                        not_undone.append(kind)
+                        self._log("error", f"switch {transaction}: rollback of {kind.value} failed: {undo_error}")
+                raise StepFailed(step.kind, reason, RollbackOutcome(tuple(not_undone))) from error
+            undo_stack.append((step.kind, undo))
+        self._log("info", f"switch {transaction}: done generation={new_state.generation}")
+        return SwitchResult(new_state, claude_target, [s.kind for s in steps])
+
+    def _previously_managed_vars(self) -> set[str]:
+        """The names the current env.sh EXPORTS (`NAME="$(…secret-tool…)" && … export NAME`, or
+        the Termux `NAME=''; … read -r NAME … && export NAME`):
+        a key removed since it was written must be unset once more, or open terminals keep
+        exporting it. Only exported names are carried, so a removed name is unset by the
+        next generation and then leaves the file: a variable the user later exports on
+        their own is not unset by MultiCred forever. The file is only parsed, never
+        executed; invalid or reserved names (PATH, CLAUDE_CONFIG_DIR…) are never carried."""
+        data = read_bytes(self.paths.env_sh)
+        if data is None:
+            return set()
+        names = set()
+        for line in data.decode("utf-8", "replace").splitlines():
+            match = _KEY_LINE.match(line)
+            if match and f"export {match.group(1)}" in line[match.end():]:
+                names.add(match.group(1))
+        # (CLAUDE_CODE_OAUTH_TOKEN is reserved but always managed: it comes from the config.)
+        return {n for n in names if is_valid_env_var_name(n) and n not in RESERVED_ENV_VARS}
+
+    def _load_state(self) -> ActiveState:
+        try:
+            return self.state_store.load()
+        except Exception as error:
+            raise StateUnreadable(str(error)) from error
+
+    def _log(self, level, message):
+        if self.log is not None:
+            self.log.log(level, message)
+
+    # MARK: steps
+
+    def _git_step(self, content: str) -> SwitchStep:
+        path = self.paths.gitconfig
+
+        def apply():
+            previous = read_bytes(path)
+            AtomicFileWriter.write(content.encode(), path, permissions=0o644)
+            return lambda: restore_file(previous, path)
+
+        return SwitchStep(SwitchStepKind.GIT, apply)
+
+    def _github_step(self, cli: GitHubCLI, account) -> SwitchStep:
+        def apply():
+            previous = cli.active_login(account.host)
+            if previous is not None and previous.lower() == account.username.lower():
+                return lambda: None
+            cli.switch_account(account.host, account.username)
+
+            def undo():
+                if previous is None:
+                    # gh had no active account recorded for the host: there is nothing to
+                    # switch back to, so the rollback reports this step as not undone.
+                    raise RuntimeError(f"conta anterior do gh em {account.host} desconhecida")
+                cli.switch_account(account.host, previous)
+            return undo
+
+        return SwitchStep(SwitchStepKind.GITHUB, apply)
+
+    def _session_step(self, target: ClaudeTarget, session: SessionEnvironment) -> SwitchStep:
+        def apply():
+            value = target.desired_value
+            if value is not None and not session_env.representable(value):
+                self._log("warning", f"session: {CLAUDE_VARIABLE}={value} cannot be written to environment.d "
+                                     "($, \\, quotes or backticks); graphical apps go back to ~/.claude at the "
+                                     "next login")
+            return session.apply(CLAUDE_VARIABLE, value)
+
+        return SwitchStep(SwitchStepKind.SESSION, apply)
+
+    def _claude_settings_step(self, config_dir: str | None, co_author: bool) -> SwitchStep:
+        path = attribution.settings_file(config_dir, self.environment)
+
+        def apply():
+            if not path.parent.is_dir():
+                return lambda: None
+            target = AtomicFileWriter.resolve_target(path, follow_symlink=True)
+            previous = read_bytes(target)
+            try:
+                content = attribution.updated(previous, co_author)
+            except attribution.UnreadableSettings:
+                # A settings.json MultiCred cannot parse is left untouched.
+                self._log("warning", f"claude settings not changed (unreadable): {target}")
+                return lambda: None
+            if content is None:
+                return lambda: None
+            # One backup of the user's original file, kept next to it.
+            backup = target.with_name(target.name + ".multicred-backup")
+            if previous is not None and not os.path.lexists(backup):
+                AtomicFileWriter.write(previous, backup, permissions=0o600)
+            AtomicFileWriter.write(content, target, permissions=0o644)
+            return lambda: restore_file(previous, target)
+
+        return SwitchStep(SwitchStepKind.CLAUDE_SETTINGS, apply)
+
+    def _claude_login_step(self, switcher: ClaudeLoginSwitcher, account, folder: str | None) -> SwitchStep:
+        return SwitchStep(SwitchStepKind.CLAUDE_LOGIN, lambda: switcher.place(account, folder))
+
+    def _env_files_step(self, shell_environment: ShellEnvironment) -> SwitchStep:
+        sh, fish = self.paths.env_sh, self.paths.env_fish
+        posix = render_posix(shell_environment, reader=self.secret_reader).encode()
+        fish_text = render_fish(shell_environment, reader=self.secret_reader).encode()
+
+        def apply():
+            previous_sh, previous_fish = read_bytes(sh), read_bytes(fish)
+            AtomicFileWriter.write(posix, sh, permissions=0o644)
+            try:
+                AtomicFileWriter.write(fish_text, fish, permissions=0o644)
+            except Exception:
+                restore_file(previous_sh, sh)
+                raise
+
+            def undo():
+                restore_file(previous_fish, fish)
+                restore_file(previous_sh, sh)
+            return undo
+
+        return SwitchStep(SwitchStepKind.ENV_FILES, apply)
+
+    def _state_step(self, new_state: ActiveState) -> SwitchStep:
+        store = self.state_store
+
+        def apply():
+            snapshot = store.snapshot()
+            try:
+                store.commit(new_state)
+            except Exception:
+                try:
+                    store.restore(snapshot)
+                except Exception:
+                    pass
+                raise
+            return lambda: store.restore(snapshot)
+
+        return SwitchStep(SwitchStepKind.STATE, apply)
