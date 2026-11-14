@@ -213,7 +213,8 @@ public actor SwitchEngine {
                 let undo = try await step.apply()
                 undoStack.append((step.kind, undo))
             } catch {
-                let reason = String(describing: error)
+                // Goes to the log and to the user: never raw tool output.
+                let reason = Redactor.displayable(String(describing: error), limit: 1000)
                 log?.log(.error, "switch \(transaction): step \(step.kind.rawValue) failed: \(reason)")
                 var notUndone: [SwitchStepKind] = []
                 for (kind, undo) in undoStack.reversed() {

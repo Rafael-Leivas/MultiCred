@@ -36,6 +36,22 @@ struct SecurityToolRunner: Sendable {
     static func hex(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
     }
+
+    /// `security`'s stderr made safe to show and log: it can echo the command
+    /// it rejected, hex-encoded secret included. Long hex or base64-like runs
+    /// are masked and the text is capped.
+    static func sanitizedError(_ result: CommandResult) -> String {
+        sanitize(String(decoding: result.standardError, as: UTF8.self))
+    }
+
+    static func sanitize(_ text: String, limit: Int = 300) -> String {
+        var cleaned = text
+            .replacingOccurrences(of: #"[0-9a-fA-F]{24,}"#, with: Redactor.mask, options: .regularExpression)
+            .replacingOccurrences(of: #"[A-Za-z0-9_\-+/=]{40,}"#, with: Redactor.mask, options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.count > limit { cleaned = String(cleaned.prefix(limit)) + "…" }
+        return cleaned
+    }
 }
 
 private final class ResultBox: @unchecked Sendable {
@@ -93,8 +109,9 @@ public struct SecurityClaudeCredentialStore: ClaudeCredentialStore {
     }
 
     private func write(service: String, account: String, data: Data) throws {
-        let line = SecurityToolRunner.interactiveLine(["add-generic-password", "-U", "-s", service, "-a", account, "-X", SecurityToolRunner.hex(data)])
-        let result = try tool.run(["-i"], standardInput: Data(line.utf8))
+        // Claude Code's item holds MCP logins too and can pass the -i line limit.
+        let command = SecurityToolCommand.add(service: service, account: account, label: nil, secret: data)
+        let result = try tool.run(command.arguments, standardInput: command.standardInput)
         guard result.exitCode == 0, result.standardError.isEmpty else { throw ClaudeLoginError.securityFailed(Self.stderr(result)) }
     }
 
@@ -104,6 +121,6 @@ public struct SecurityClaudeCredentialStore: ClaudeCredentialStore {
     }
 
     private static func stderr(_ result: CommandResult) -> String {
-        String(decoding: result.standardError, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        SecurityToolRunner.sanitizedError(result)
     }
 }
