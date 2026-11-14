@@ -24,6 +24,11 @@ final class RealClaudeCredentialStoreTests: XCTestCase {
         try store.writeFolderItem(configDir: folder, data: Data("{}".utf8))
         XCTAssertEqual(try store.readFolderItem(configDir: folder), Data("{}".utf8), "-U updates in place")
 
+        // As large as a real item with an MCP login (past the -i line limit).
+        let large = Data(("{\"mcpOAuth\":{\"scope\":\"" + String(repeating: "access-tag.read ", count: 640) + "\"}}").utf8)
+        try store.writeFolderItem(configDir: folder, data: large)
+        XCTAssertEqual(try store.readFolderItem(configDir: folder), large, "a 10 KB value round-trips")
+
         try store.writeVault(key, data: value)
         XCTAssertEqual(try store.readVault(key), value)
         try store.deleteVault(key)

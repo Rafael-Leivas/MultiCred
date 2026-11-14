@@ -47,7 +47,16 @@ final class AppModel {
     private(set) var verification: VerificationReport?
     private(set) var isVerifying = false
     /// Last user-facing problem, shown by the window that triggered it.
-    var lastError: String?
+    /// Shown in an alert: always passed through `UserMessages.displayable`, so a
+    /// tool error can never become a screen-sized alert or show a secret.
+    var lastError: String? {
+        didSet {
+            if let lastError, lastError != oldValue {
+                let safe = UserMessages.displayable(lastError)
+                if safe != lastError { self.lastError = safe }
+            }
+        }
+    }
     /// Called after every successful switch (HUD, notification, icon).
     @ObservationIgnored var onSwitched: ((SwitchOutcome) -> Void)?
 

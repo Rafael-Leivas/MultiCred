@@ -234,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showError(_ title: String, _ message: String) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = message
+        alert.informativeText = UserMessages.displayable(message)
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Ok")
         alert.addButton(withTitle: "Abrir Verificar")
