@@ -153,4 +153,45 @@
     input.value = '';
   });
   $('#dl-mac')?.addEventListener('click', (e) => { if (e.currentTarget.getAttribute('href') === '#') e.preventDefault(); });
+
+  // Theme: system preference by default, manual choice persisted in localStorage.
+  const root = document.documentElement;
+  const themeMeta = $('meta[name="theme-color"]');
+  const toggle = $('#theme-toggle');
+  const store = {
+    get() { try { return localStorage.getItem('mc-theme'); } catch { return null; } },
+    set(v) { try { localStorage.setItem('mc-theme', v); } catch { /* storage blocked */ } },
+  };
+  const paintTheme = (t) => {
+    root.setAttribute('data-theme', t);
+    themeMeta?.setAttribute('content', t === 'light' ? '#fafafa' : '#07080c');
+    toggle?.setAttribute('aria-pressed', String(t === 'dark'));
+  };
+  function applyTheme(t, origin) {
+    if (root.dataset.theme === t) return;
+    if (reduced) { paintTheme(t); return; }
+    if (document.startViewTransition && origin) {
+      const { x, y } = origin;
+      const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      const vt = document.startViewTransition(() => paintTheme(t));
+      vt.ready.then(() => root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 650, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' },
+      )).catch(() => {});
+      return;
+    }
+    root.classList.add('theme-fade');
+    paintTheme(t);
+    setTimeout(() => root.classList.remove('theme-fade'), 600);
+  }
+  paintTheme(root.dataset.theme || 'dark');
+  toggle?.addEventListener('click', () => {
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    const b = toggle.getBoundingClientRect();
+    store.set(next);
+    applyTheme(next, { x: b.left + b.width / 2, y: b.top + b.height / 2 });
+  });
+  matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', (e) => {
+    if (!store.get()) applyTheme(e.matches ? 'light' : 'dark');
+  });
 })();
