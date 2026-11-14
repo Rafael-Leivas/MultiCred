@@ -29,6 +29,15 @@ xcodebuild -project "$ROOT/MultiCred.xcodeproj" -scheme MultiCred -configuration
   -derivedDataPath "$BUILD" build >/dev/null
 cp -R "$BUILD/Build/Products/Release/MultiCred.app" "$APP"
 
+# Help MCP server (read-only, no dependencies): a single universal binary inside the app.
+echo "==> Building multicred-mcp"
+HELPER_PACKAGE="$ROOT/Packages/MultiCredCore"
+# Build errors stay visible (set -e stops here); only the bin path query is quiet.
+swift build -c release --arch arm64 --arch x86_64 --product multicred-mcp --package-path "$HELPER_PACKAGE" 2>&1 | tail -n 25
+HELPER_BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path --package-path "$HELPER_PACKAGE")/multicred-mcp"
+mkdir -p "$APP/Contents/Helpers"
+cp "$HELPER_BIN" "$APP/Contents/Helpers/multicred-mcp"
+
 notarize() {
   local file="$1"
   if [[ -n "${NOTARY_PROFILE:-}" ]]; then
@@ -44,6 +53,7 @@ notarize() {
 NOTARIZED=0
 if [[ -n "${DEVELOPER_ID:-}" ]]; then
   echo "==> Signing with $DEVELOPER_ID"
+  codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP/Contents/Helpers/multicred-mcp"
   codesign --force --deep --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP"
   ditto -c -k --keepParent "$APP" "$DIST/MultiCred.zip"
   echo "==> Notarizing"
@@ -55,10 +65,12 @@ if [[ -n "${DEVELOPER_ID:-}" ]]; then
   fi
 else
   echo "==> No DEVELOPER_ID: ad hoc signature with hardened runtime (fine on this Mac)"
+  codesign --force --options runtime --sign - "$APP/Contents/Helpers/multicred-mcp"
   codesign --force --deep --options runtime --sign - "$APP"
 fi
 
 codesign --verify --strict "$APP"
+"$ROOT/scripts/verify-mcp-bundle.sh" "$APP"
 
 # Final artifacts are built from the (stapled) app.
 rm -f "$DIST/MultiCred.zip"

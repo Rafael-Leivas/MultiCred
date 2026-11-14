@@ -31,6 +31,16 @@ Guidelines:
 - Keep PRs focused; describe what changes for the user.
 - Commit messages in English, present tense.
 
+## Keeping the help MCP server up to date
+
+MultiCred ships a read-only help server (`multicred-mcp`) whose guide lives in
+`Packages/MultiCredCore/Sources/MultiCredHelp/Guide/guia.md`. When a change alters a screen, a setting, a
+generated file or path, a command, a Verify check or any user-visible behavior, ask the maintainer
+(Portuguese, as the guide): "Deseja atualizar as tools do MCP (e o guia) para refletir esta mudança?"
+Do not skip the question and do not update silently. `swift test` fails (`GuideConsistencyTests`) when the
+guide cites something that no longer exists. Adding a tool needs a spec change and a security review
+(`docs/SECURITY.md`).
+
 ## Security
 
 Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).

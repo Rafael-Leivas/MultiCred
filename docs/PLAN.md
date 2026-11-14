@@ -587,6 +587,35 @@ Ver `TODOS.md`. Resumo: regras por pasta (`includeIf`), proteção de commit, at
 `GH_CONFIG_DIR`, chaves de API para apps gráficos com helper seguro, auto-update (Sparkle), Homebrew
 cask, CLI companheira `multicred switch`, exportar/importar config, troca automática por pasta.
 
+## 12. Ajudante MCP (ajuda com o Claude)
+
+Servidor MCP somente leitura (`multicred-mcp`, dentro do app em `Contents/Helpers/`) que o Claude Code do
+usuário chama para responder dúvidas e diagnosticar o estado local. Código em
+`Packages/MultiCredCore/Sources/MultiCredHelp` (guia embutido em `Guide/guia.md`) e `Sources/multicred-mcp`.
+Spec aprovada em 2026-10-16 (requisitos R-01 a R-11).
+
+| ID | Decisão | Por quê |
+|---|---|---|
+| M1 | Protocolo MCP (JSON-RPC por stdio) escrito à mão, sem SDK | Zero dependência e zero rede; mantém "o app não tem chamadas de rede próprias" |
+| M2 | Só Claude Code na v1; o app mostra o comando `claude mcp add --scope user`, não edita a config do Claude | Não tocar em `~/.claude*`; Claude Desktop exigiria editar `claude_desktop_config.json` |
+| M3 | Um comando por pasta de Claude (`CLAUDE_CONFIG_DIR=… claude mcp add …`) | `claude mcp add` grava na config da pasta ativa |
+| M4 | Somente leitura imposto em runtime (`ReadOnlyCommandRunner`, Keychain/cofre só presença, `loadReadOnly`) e em compilação (`MCPArchitectureGuardTests`) | Defesa em duas camadas; ver `docs/SECURITY.md` |
+| M5 | Lista fixa de 4 tools: `sobre_o_multicred`, `como_fazer`, `solucao_de_problemas`, `diagnostico_do_meu_multicred` | Acrescentar uma é mudança de spec e de auditoria |
+| M6 | Diagnóstico reutiliza `Verifier` (mesmos checks da tela Verificar); não confere tokens do gh online | Sem lógica duplicada; sem rede |
+| M7 | Guia (`guia.md`) é a fonte única, embutido no binário; `GuideConsistencyTests` falha se citar caminho, arquivo, comando ou rótulo de tela que não existe, ou se a versão diferir de `MARKETING_VERSION` | O guia não pode ficar para trás do app |
+
+### Regra de manutenção (obrigatória)
+
+Sempre que uma mudança alterar tela, ajuste, arquivo ou caminho gerado, comando, check da tela Verificar ou
+qualquer comportamento visível ao usuário, **pergunte ao usuário antes de encerrar a tarefa**:
+
+> Deseja atualizar as tools do MCP (e o guia) para refletir esta mudança?
+
+Não atualize em silêncio nem deixe de perguntar. Se a resposta for sim, atualize `Guide/guia.md` (e as
+tools, se mudar o que elas devem fazer) e rode `swift test --package-path Packages/MultiCredCore`: os testes
+de consistência apontam o que ficou para trás. A mesma regra está em `CLAUDE.md` e `CONTRIBUTING.md`, e o
+`MaintenanceRuleTests` falha se algum desses arquivos perder a pergunta.
+
 ---
 
 ## GSTACK REVIEW REPORT

@@ -75,6 +75,14 @@ public struct SecurityClaudeCredentialStore: ClaudeCredentialStore {
         try read(service: Self.vaultService, account: key)
     }
 
+    /// Attributes only (no `-w`): the secret is never read.
+    public func hasVaultEntry(_ key: String) throws -> Bool {
+        let result = try tool.run(["find-generic-password", "-s", Self.vaultService, "-a", key])
+        if result.exitCode == 44 { return false }
+        guard result.exitCode == 0 else { throw ClaudeLoginError.securityFailed(Self.stderr(result)) }
+        return true
+    }
+
     public func writeVault(_ key: String, data: Data) throws {
         try write(service: Self.vaultService, account: key, data: data)
     }

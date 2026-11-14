@@ -25,6 +25,12 @@ public struct ConfigRepository: Sendable {
         return migrated
     }
 
+    /// Same result as `load()` but never writes: an older file is migrated in
+    /// memory only (no `config.json.v<n>` copy, no save). For read-only callers.
+    public func loadReadOnly() throws -> Config? {
+        try store.load().map { ConfigMigration.migrate($0).0 }
+    }
+
     /// Refuses to save a configuration that could not be applied.
     public func save(_ config: Config) throws {
         let issues = Validation.issues(in: config)

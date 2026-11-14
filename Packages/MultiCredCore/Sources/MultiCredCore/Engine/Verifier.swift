@@ -129,7 +129,7 @@ public struct Verifier: Sendable {
             ))
             if let account = config.claudeAccount(state.appliedClaudeAccountId) {
                 let present = account.kind == .login
-                    ? ((try? environment.claudeCredentials.readVault(account.id.uuidString)) ?? nil) != nil
+                    ? (try? environment.claudeCredentials.hasVaultEntry(account.id.uuidString)) ?? false
                     : (try? environment.keychain.containsItem(account: account.keychainAccount)) ?? false
                 let legacy = account.kind == .token && present && ((try? environment.keychain.isLegacyItem(account: account.keychainAccount)) ?? false)
                 let email = account.email.map { " · \($0)" } ?? ""
