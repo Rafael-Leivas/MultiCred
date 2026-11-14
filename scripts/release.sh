@@ -31,12 +31,7 @@ cp -R "$BUILD/Build/Products/Release/MultiCred.app" "$APP"
 
 # Help MCP server (read-only, no dependencies): a single universal binary inside the app.
 echo "==> Building multicred-mcp"
-HELPER_PACKAGE="$ROOT/Packages/MultiCredCore"
-# Build errors stay visible (set -e stops here); only the bin path query is quiet.
-swift build -c release --arch arm64 --arch x86_64 --product multicred-mcp --package-path "$HELPER_PACKAGE" 2>&1 | tail -n 25
-HELPER_BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path --package-path "$HELPER_PACKAGE")/multicred-mcp"
-mkdir -p "$APP/Contents/Helpers"
-cp "$HELPER_BIN" "$APP/Contents/Helpers/multicred-mcp"
+"$ROOT/scripts/build-mcp-helper.sh" "$APP/Contents/Helpers/multicred-mcp"
 
 notarize() {
   local file="$1"

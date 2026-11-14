@@ -24,7 +24,7 @@ jobs:
         run: swift test --package-path Packages/MultiCredCore
 
       - name: Build help MCP server (Release)
-        run: swift build -c release --arch arm64 --arch x86_64 --product multicred-mcp --package-path Packages/MultiCredCore
+        run: scripts/build-mcp-helper.sh build/ci-helper/multicred-mcp
 
       - name: Build app (Release, unsigned)
         run: |
