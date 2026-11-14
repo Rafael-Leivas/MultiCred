@@ -34,6 +34,8 @@ public actor ToolLocator {
     ]
 
     static let pathMarker = "__MULTICRED_PATH__"
+    /// The only script the login shell is asked to run (also the read-only allowlist entry).
+    static let pathProbeScript = "printf '\(pathMarker)%s\(pathMarker)' \"$PATH\""
 
     private let environment: SystemEnvironment
     private let wellKnownDirectories: [String]
@@ -94,7 +96,7 @@ public actor ToolLocator {
         if let loginShellPATH { return loginShellPATH }
         let request = CommandRequest(
             executable: URL(fileURLWithPath: environment.loginShell),
-            arguments: ["-l", "-i", "-c", "printf '\(Self.pathMarker)%s\(Self.pathMarker)' \"$PATH\""],
+            arguments: ["-l", "-i", "-c", Self.pathProbeScript],
             environment: [
                 "HOME": environment.home.path,
                 "USER": environment.userName,

@@ -38,6 +38,14 @@ Desenvolvimento: no Xcode, o esquema **MultiCred** roda em modo de teste (nada n
 Tokens do Claude Code e do gh, o conteúdo das pastas `~/.claude*`, o `hosts.yml` do gh (só via
 `gh`), e qualquer linha dos seus arquivos fora do bloco do MultiCred.
 
+## Tire dúvidas com o seu Claude
+
+O app inclui um ajudante (servidor MCP, só leitura) que o Claude Code usa para responder o que é o
+MultiCred, como fazer cada tarefa, o que fazer quando algo falha e se o seu MultiCred está certo.
+Ajustes › **Ajuda com o Claude…** mostra o comando `claude mcp add` de cada pasta de Claude; cole no
+Terminal. Para desconectar: `claude mcp remove multicred --scope user`. O ajudante não altera nada, não
+mostra chaves nem tokens, não usa rede e não registra suas perguntas ([detalhes](docs/SECURITY.md)).
+
 ## Desinstalar
 
 Ajustes › Desinstalar: remove só os blocos, o arquivo do fish, a variável do launchd, as chaves do

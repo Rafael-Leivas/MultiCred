@@ -122,6 +122,7 @@ struct MainWindowView: View {
             }
         case let .editAPIKey(id): APIKeyEditorPage(model: model, navigator: navigator, keyId: id)
         case .uninstall: UninstallPage(model: model, navigator: navigator)
+        case .claudeHelp: ClaudeHelpPage(model: model)
         }
     }
 }

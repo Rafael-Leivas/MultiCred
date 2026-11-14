@@ -117,6 +117,30 @@ Verificar aponta esses itens; salvar o valor de novo recria o item no esquema no
   real em `~/.claude`.
 - Modo real só com `-MultiCredRealSystem YES` (Debug) ou no build Release.
 
+## Ajudante MCP (`multicred-mcp`)
+
+Executável dentro do app (`Contents/Helpers/multicred-mcp`) que o Claude Code do usuário chama por stdio
+para responder dúvidas e diagnosticar. O MultiCred **não** conecta nada sozinho: Ajustes › "Ajuda com o
+Claude…" só mostra e copia o comando `claude mcp add`, e o usuário o roda.
+
+- **Somente leitura, em duas camadas.** (1) Em tempo de execução: `ReadOnlyCommandRunner` só deixa passar
+  `git config --get`, `gh auth status`/`gh config get`, `claude auth status`, `launchctl getenv`, `--version`
+  e a leitura do PATH do shell de login; qualquer outro comando lança `ReadOnlyViolation` antes de iniciar
+  processo. O Keychain responde só "existe?" (`PresenceOnlyKeychain`); credenciais do Claude nunca são lidas
+  nem alteradas (`PresenceOnlyClaudeCredentialStore`); `config.json` antigo é lido sem migrar nem regravar.
+  (2) Em compilação: `MCPArchitectureGuardTests` reprova o alvo se ele referenciar rede, escrita em disco,
+  `SecItem*`, `find-generic-password`, `launchctl`, `Process()` ou o login/troca de perfil.
+- **Sem segredos na saída.** Nenhuma tool lê o valor de chaves de API, tokens do Claude ou do gh. A saída
+  traz nome e e-mail do git, login do gh e e-mail da conta Claude (do próprio usuário, sem máscara).
+- **Sem rede e sem dependências.** JSON-RPC por stdio escrito à mão; nenhum pacote de terceiros; nenhuma
+  pergunta é registrada em log.
+- **Lista fixa de tools:** `sobre_o_multicred`, `como_fazer`, `solucao_de_problemas`,
+  `diagnostico_do_meu_multicred`. Acrescentar uma é mudança de spec e de auditoria.
+- **Ressalva:** o PATH do shell de login é obtido executando `$SHELL -l -i -c` (mesmo método do app), o que
+  roda os arquivos de inicialização do próprio usuário.
+- **Modo de teste:** em builds Debug o ajudante olha o sandbox (`$TMPDIR/multicred-sandbox`); o sistema real
+  só com `--real-system` ou no build Release.
+
 ## Fora do escopo da v1
 
 Helper assinado para entregar chaves a apps gráficos; Developer ID e notarização (o script existe,

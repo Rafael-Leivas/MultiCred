@@ -31,6 +31,8 @@ enum Route: Hashable {
     case claudeLogin(UUID)
     case editAPIKey(UUID?)
     case uninstall
+    /// Commands that connect the help MCP server to Claude Code.
+    case claudeHelp
 }
 
 /// Navigation for the single main window. Changing section clears the page

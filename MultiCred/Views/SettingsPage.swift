@@ -40,6 +40,13 @@ struct SettingsPage: View {
                             .font(.callout)
                     }
                 }
+                Section {
+                    Button("Ajuda com o Claude…") { navigator.push(.claudeHelp) }
+                } header: {
+                    Text("Ajuda")
+                } footer: {
+                    Text("Conecte o ajudante do MultiCred ao Claude Code para tirar dúvidas e conferir se está tudo certo. Só leitura.")
+                }
                 Section("Diagnóstico") {
                     HStack {
                         Button("Abrir pasta de logs") { NSWorkspace.shared.open(model.environment.logsDirectory) }
@@ -129,7 +136,7 @@ struct UninstallPage: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(model.uninstallPreview()) { FileChangeView(change: $0) }
-                        Text("Também: launchctl unsetenv CLAUDE_CONFIG_DIR, apagar do Keychain as chaves de API e os tokens das contas Claude (pastas e conversas do Claude ficam), desligar a abertura ao iniciar a sessão. Os backups vão para ~/Library/Application Support/MultiCred-backups-<data>.")
+                        Text("Também: launchctl unsetenv CLAUDE_CONFIG_DIR, apagar do Keychain as chaves de API e os tokens das contas Claude (pastas e conversas do Claude ficam), desligar a abertura ao iniciar a sessão. Os backups vão para ~/Library/Application Support/MultiCred-backups-<data>. Se conectou o ajudante ao Claude, desconecte com claude mcp remove multicred --scope user.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }

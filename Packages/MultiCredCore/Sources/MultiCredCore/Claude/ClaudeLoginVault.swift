@@ -20,6 +20,9 @@ public protocol ClaudeCredentialStore: Sendable {
     func writeFolderItem(configDir: String?, data: Data) throws
     /// MultiCred's vault entry for a key (account id or a folder's own login).
     func readVault(_ key: String) throws -> Data?
+    /// True when the vault has an entry for `key`. Answer from attributes only:
+    /// there is deliberately no default that reads the secret to find out.
+    func hasVaultEntry(_ key: String) throws -> Bool
     func writeVault(_ key: String, data: Data) throws
     func deleteVault(_ key: String) throws
     /// Item of a throwaway folder used to log in a new account.
@@ -279,6 +282,7 @@ public final class InMemoryClaudeCredentialStore: ClaudeCredentialStore, @unchec
     public func writeFolderItem(configDir: String?, data: Data) throws { lock.withLock { folders[key(configDir)] = data } }
     public func deleteFolderItem(configDir: String?) throws { _ = lock.withLock { folders.removeValue(forKey: key(configDir)) } }
     public func readVault(_ key: String) throws -> Data? { lock.withLock { vault[key] } }
+    public func hasVaultEntry(_ key: String) throws -> Bool { lock.withLock { vault[key] != nil } }
     public func writeVault(_ key: String, data: Data) throws { lock.withLock { vault[key] = data } }
     public func deleteVault(_ key: String) throws { _ = lock.withLock { vault.removeValue(forKey: key) } }
 }

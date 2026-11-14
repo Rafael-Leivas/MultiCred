@@ -28,6 +28,9 @@
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+O `scripts/release.sh` compila o ajudante MCP (`multicred-mcp`, binário universal), copia para
+`Contents/Helpers/`, assina antes do app e roda `scripts/verify-mcp-bundle.sh` (assinatura + handshake).
+
 O workflow `Release` confere se a tag bate com `MARKETING_VERSION`, compila, assina, notariza, gera
 `.dmg`, `.zip`, `SHA256SUMS.txt` e a atestação de procedência, e cria a Release. Depois, atualize
 `version` e `sha256` no cask do tap.
