@@ -39,7 +39,7 @@ public struct SecItemKeychainStore: KeychainStore {
         let command = SecurityToolCommand.add(service: service, account: account, label: Self.label, secret: value)
         let result = try runTool(command)
         guard result.exitCode == 0, result.standardError.isEmpty, try containsItem(account: account) else {
-            throw KeychainError.toolFailed(String(decoding: result.standardError, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            throw KeychainError.toolFailed(SecurityToolRunner.sanitizedError(result))
         }
     }
 
@@ -61,7 +61,7 @@ public struct SecItemKeychainStore: KeychainStore {
             // Created by `security`: delete with it as well.
             let result = try runTool(SecurityToolCommand.delete(service: service, account: account))
             if result.exitCode != 0, try containsItem(account: account) {
-                throw KeychainError.toolFailed(String(decoding: result.standardError, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+                throw KeychainError.toolFailed(SecurityToolRunner.sanitizedError(result))
             }
         }
     }
@@ -122,12 +122,25 @@ public struct SecurityToolCommand: Equatable, Sendable {
     public let arguments: [String]
     public let standardInput: Data?
 
-    /// `security -i` reads one command per line from stdin; -X takes the
-    /// password as hex, so the secret is neither in argv nor needs quoting.
-    public static func add(service: String, account: String, label: String, secret: Data) -> SecurityToolCommand {
-        let hex = secret.map { String(format: "%02x", $0) }.joined()
-        let line = "add-generic-password -U -s \(service) -a \(account) -l \(label) -X \(hex)\n"
-        return SecurityToolCommand(arguments: ["-i"], standardInput: Data(line.utf8))
+    /// Longest line `security -i` reads as one command (the value Claude Code
+    /// uses). Its line buffer is about 4 KB: anything past it is parsed as more
+    /// commands, which `security` rejects by echoing them, hex secret included.
+    public static let interactiveLineLimit = 4032
+
+    /// `security -i` reads one command per line from stdin; -X takes the value
+    /// as hex, so it is not in argv and needs no quoting. A value too long for
+    /// one line goes in argv instead, as Claude Code does: visible only to the
+    /// user's own processes, for the instant `security` runs.
+    public static func add(service: String, account: String, label: String?, secret: Data) -> SecurityToolCommand {
+        let hex = SecurityToolRunner.hex(secret)
+        var words = ["add-generic-password", "-U", "-s", service, "-a", account]
+        if let label { words += ["-l", label] }
+        words += ["-X", hex]
+        let line = SecurityToolRunner.interactiveLine(words)
+        if line.utf8.count <= interactiveLineLimit {
+            return SecurityToolCommand(arguments: ["-i"], standardInput: Data(line.utf8))
+        }
+        return SecurityToolCommand(arguments: words, standardInput: nil)
     }
 
     public static func delete(service: String, account: String) -> SecurityToolCommand {

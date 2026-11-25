@@ -82,6 +82,16 @@ public enum Redactor {
     /// For diagnostics of CLI output: also masks anything that looks like a
     /// credential (sk-ant-… or any run of 40+ token characters), so an
     /// unexpected token format never reaches a log.
+    /// Text that is safe and small enough for an alert: credential-like runs
+    /// (including hex-encoded ones) masked, then capped. A modal alert taller
+    /// than the screen cannot be dismissed and freezes the app.
+    public static func displayable(_ text: String, limit: Int = 500) -> String {
+        var cleaned = redactCredentialLike(text)
+            .replacingOccurrences(of: #"[0-9a-fA-F]{24,}"#, with: mask, options: .regularExpression)
+        if cleaned.count > limit { cleaned = String(cleaned.prefix(limit)) + "…" }
+        return cleaned
+    }
+
     public static func redactCredentialLike(_ text: String, secrets: [String] = []) -> String {
         redact(text, secrets: secrets)
             .replacingOccurrences(of: #"sk-ant-[A-Za-z0-9_\-]+"#, with: mask, options: .regularExpression)

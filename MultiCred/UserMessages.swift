@@ -6,6 +6,11 @@ enum UserMessages {
     static let busy = "Uma troca já está em andamento."
     static let defaultAccountInTestMode = "No modo de teste, o login real só funciona em pastas próprias. A pasta padrão usaria o mesmo item do Keychain do seu login real em ~/.claude."
 
+    /// Last guard before any alert: masks credential-like text and caps length.
+    static func displayable(_ text: String) -> String {
+        Redactor.displayable(text)
+    }
+
     static func describe(_ error: any Error) -> String {
         switch error {
         case let error as SwitchError: describe(error)
