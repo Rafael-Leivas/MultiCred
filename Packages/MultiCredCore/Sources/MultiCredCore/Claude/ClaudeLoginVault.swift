@@ -72,6 +72,93 @@ enum ClaudeLoginJSON {
         }
         return object
     }
+
+    /// A folder's credential item as an object. A damaged item (e.g. cut short
+    /// by an earlier failed write) is not an error: the members that are still
+    /// complete are kept (one level deep, so whole MCP logins inside `mcpOAuth`
+    /// survive) and `intact` is false.
+    static func folderItem(_ data: Data?) -> (object: [String: Any], intact: Bool) {
+        guard let data else { return ([:], true) }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { return (object, true) }
+        return (salvage(Array(data)), false)
+    }
+
+    /// Complete members of the object that starts at the first `{`.
+    static func salvage(_ bytes: [UInt8]) -> [String: Any] {
+        guard let open = bytes.firstIndex(of: UInt8(ascii: "{")) else { return [:] }
+        return salvageObject(bytes, from: open, depth: 0)
+    }
+
+    private static func salvageObject(_ b: [UInt8], from open: Int, depth: Int) -> [String: Any] {
+        var result: [String: Any] = [:]
+        var i = open + 1
+        while true {
+            i = skip(b, i, " \t\r\n,")
+            guard i < b.count, b[i] == UInt8(ascii: "\"") else { return result }
+            guard let keyEnd = endOfString(b, i) else { return result }
+            guard let key = try? JSONSerialization.jsonObject(with: Data(b[i...keyEnd]), options: .fragmentsAllowed) as? String else { return result }
+            i = skip(b, keyEnd + 1, " \t\r\n:")
+            guard i < b.count else { return result }
+            if let valueEnd = endOfValue(b, i),
+               let value = try? JSONSerialization.jsonObject(with: Data(b[i...valueEnd]), options: .fragmentsAllowed) {
+                result[key] = value
+                i = valueEnd + 1
+            } else {
+                // Cut off inside this value: keep what is complete inside it.
+                if depth == 0, b[i] == UInt8(ascii: "{") {
+                    let inner = salvageObject(b, from: i, depth: 1)
+                    if !inner.isEmpty { result[key] = inner }
+                }
+                return result
+            }
+        }
+    }
+
+    private static func skip(_ b: [UInt8], _ start: Int, _ chars: String) -> Int {
+        let set = Set(chars.utf8)
+        var i = start
+        while i < b.count, set.contains(b[i]) { i += 1 }
+        return i
+    }
+
+    private static func endOfString(_ b: [UInt8], _ quote: Int) -> Int? {
+        var i = quote + 1
+        while i < b.count {
+            if b[i] == UInt8(ascii: "\\") { i += 2; continue }
+            if b[i] == UInt8(ascii: "\"") { return i }
+            i += 1
+        }
+        return nil
+    }
+
+    /// Index of the last byte of the value starting at `start`, or nil if cut off.
+    private static func endOfValue(_ b: [UInt8], _ start: Int) -> Int? {
+        switch b[start] {
+        case UInt8(ascii: "\""):
+            return endOfString(b, start)
+        case UInt8(ascii: "{"), UInt8(ascii: "["):
+            var depth = 0
+            var i = start
+            while i < b.count {
+                switch b[i] {
+                case UInt8(ascii: "\""):
+                    guard let end = endOfString(b, i) else { return nil }
+                    i = end
+                case UInt8(ascii: "{"), UInt8(ascii: "["): depth += 1
+                case UInt8(ascii: "}"), UInt8(ascii: "]"):
+                    depth -= 1
+                    if depth == 0 { return i }
+                default: break
+                }
+                i += 1
+            }
+            return nil
+        default:
+            var i = start
+            while i < b.count, ![UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]")].contains(b[i]) { i += 1 }
+            return i < b.count ? i - 1 : nil
+        }
+    }
 }
 
 /// Which login each folder currently holds. Absent = the folder's own login.
@@ -188,8 +275,10 @@ public struct ClaudeLoginSwitcher: Sendable {
 
     /// Saves the folder's live login to its owner's vault entry (rotated tokens).
     private func saveBack(from configDir: String?, owner: UUID?) throws -> @Sendable () throws -> Void {
-        guard let item = try store.readFolderItem(configDir: configDir),
-              let oauth = try ClaudeLoginJSON.object(item)["claudeAiOauth"] as? [String: Any] else {
+        // A damaged item cannot be trusted to hold the owner's login (a failed
+        // write may have left another account's login in it): never save it.
+        let (item, intact) = ClaudeLoginJSON.folderItem(try store.readFolderItem(configDir: configDir))
+        guard intact, let oauth = item["claudeAiOauth"] as? [String: Any] else {
             return {}
         }
         let key = owner?.uuidString ?? Self.ownLoginKey(configDir)
@@ -211,10 +300,10 @@ public struct ClaudeLoginSwitcher: Sendable {
             return try write(record: try ClaudeLoginRecord.decode(saved), into: configDir)
         }
         let previousItem = try store.readFolderItem(configDir: configDir)
-        if let previousItem {
-            var object = try ClaudeLoginJSON.object(previousItem)
+        if previousItem != nil {
+            var object = ClaudeLoginJSON.folderItem(previousItem).object
             object.removeValue(forKey: "claudeAiOauth")
-            try store.writeFolderItem(configDir: configDir, data: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+            try writeFolderItemSafely(configDir: configDir, data: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), previous: previousItem)
         }
         let stateFile = ClaudeAccountFiles.stateFile(for: ClaudeFolder.ownLogin(configDir), environment: environment)
         let previousState = try? Data(contentsOf: stateFile)
@@ -239,21 +328,40 @@ public struct ClaudeLoginSwitcher: Sendable {
     /// `oauthAccount` in its .claude.json.
     private func write(record: ClaudeLoginRecord, into configDir: String?) throws -> @Sendable () throws -> Void {
         let previousItem = try store.readFolderItem(configDir: configDir)
-        var object = try previousItem.map(ClaudeLoginJSON.object) ?? [:]
+        // A damaged item keeps only its complete members (MCP logins).
+        var object = ClaudeLoginJSON.folderItem(previousItem).object
         object["claudeAiOauth"] = try ClaudeLoginJSON.object(record.oauth)
-        try store.writeFolderItem(configDir: configDir, data: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+        try writeFolderItemSafely(configDir: configDir, data: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), previous: previousItem)
 
         let stateFile = ClaudeAccountFiles.stateFile(for: ClaudeFolder.ownLogin(configDir), environment: environment)
         let previousState = try? Data(contentsOf: stateFile)
         if let account = record.account {
-            var state = previousState.flatMap { try? ClaudeLoginJSON.object($0) } ?? [:]
-            state["oauthAccount"] = try ClaudeLoginJSON.object(account)
-            let data = try JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-            try AtomicFileWriter.write(data, to: stateFile, permissions: 0o600, followSymlink: true)
+            do {
+                var state = previousState.flatMap { try? ClaudeLoginJSON.object($0) } ?? [:]
+                state["oauthAccount"] = try ClaudeLoginJSON.object(account)
+                let data = try JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+                try AtomicFileWriter.write(data, to: stateFile, permissions: 0o600, followSymlink: true)
+            } catch {
+                if let previousItem { try? store.writeFolderItem(configDir: configDir, data: previousItem) }
+                throw error
+            }
         }
         return {
             if let previousItem { try store.writeFolderItem(configDir: configDir, data: previousItem) }
             if record.account != nil { try FileRestore.restore(previousState, to: stateFile) }
+        }
+    }
+
+    /// Writes the folder item; if the write fails it puts the previous content
+    /// back right away. The transaction's undo only exists after a step
+    /// succeeds, so a failed write must clean up after itself (2026-11-25: a
+    /// cut-off write left another account's login in ~/.claude).
+    private func writeFolderItemSafely(configDir: String?, data: Data, previous: Data?) throws {
+        do {
+            try store.writeFolderItem(configDir: configDir, data: data)
+        } catch {
+            if let previous { try? store.writeFolderItem(configDir: configDir, data: previous) }
+            throw error
         }
     }
 
